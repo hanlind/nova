@@ -86,14 +86,16 @@ class ApiTestCase(test.TestCase):
         flavor['rxtx_factor'] = 0
         sys_meta = flavors.save_flavor_info({}, flavor)
         instance = dict(id='id', uuid='uuid', project_id='project_id',
-            host='host', system_metadata=utils.dict_to_metadata(sys_meta))
+            host='host', system_metadata=utils.dict_to_metadata(sys_meta),
+            info_cache={'network_info': '[]'})
         self.network_api.allocate_for_instance(
             self.context, instance, 'vpn', 'requested_networks', macs=macs)
 
     def _do_test_associate_floating_ip(self, orig_instance_uuid):
         """Test post-association logic."""
 
-        new_instance = {'uuid': 'new-uuid'}
+        new_instance = {'uuid': 'new-uuid',
+                        'info_cache': {'network_info': '[]'}}
 
         def fake_associate(*args, **kwargs):
             return orig_instance_uuid
@@ -291,7 +293,8 @@ class TestUpdateInstanceCache(test.TestCase):
     def setUp(self):
         super(TestUpdateInstanceCache, self).setUp()
         self.context = context.get_admin_context()
-        self.instance = {'uuid': FAKE_UUID}
+        self.instance = {'uuid': FAKE_UUID,
+                         'info_cache': {'network_info': '[]'}}
         self.impl = self.mox.CreateMock(api.API)
         vifs = [network_model.VIF(id='super_vif')]
         self.nw_info = network_model.NetworkInfo(vifs)
@@ -323,6 +326,33 @@ class TestUpdateInstanceCache(test.TestCase):
         api.update_instance_cache_with_nw_info(self.impl, self.context,
                                                self.instance,
                                                network_model.NetworkInfo([]))
+
+    @api.refresh_cache
+    def _fake_refresh_nw_cache(self, context, instance, nw_info):
+        # only update the cache if needed
+        if (instance['info_cache']['network_info'] != nw_info):
+            self.mox.StubOutWithMock(api,
+                                     'update_instance_cache_with_nw_info')
+        return network_model.NetworkInfo(nw_info)
+
+    def test_instance_info_cache_update_not_called(self):
+        nw_info = network_model.NetworkInfo(
+            self.instance['info_cache']['network_info'])
+        self._fake_refresh_nw_cache(self.context,
+                                    self.instance, nw_info)
+        self.mox.ReplayAll()
+        api.update_instance_cache_with_nw_info(self, self.context,
+                                               self.instance,
+                                               nw_info=nw_info)
+
+    def test_instance_info_cache_update_called(self):
+        nw_info = network_model.NetworkInfo([{'id': 'uid'}])
+        self._fake_refresh_nw_cache(self.context,
+                                    self.instance, nw_info)
+        self.mox.ReplayAll()
+        api.update_instance_cache_with_nw_info(self, self.context,
+                                               self.instance,
+                                               nw_info=nw_info)
 
     def test_decorator_return_object(self):
         @api.refresh_cache

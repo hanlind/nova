@@ -156,12 +156,14 @@ class TestNeutronv2Base(test.TestCase):
         self.instance = {'project_id': '9d049e4b60b64716978ab415e6fbd5c0',
                          'uuid': str(uuid.uuid4()),
                          'display_name': 'test_instance',
+                         'info_cache': {'network_info': '[]'},
                          'availability_zone': 'nova',
                          'host': 'some_host',
                          'security_groups': []}
         self.instance2 = {'project_id': '9d049e4b60b64716978ab415e6fbd5c0',
                          'uuid': str(uuid.uuid4()),
                          'display_name': 'test_instance2',
+                         'info_cache': {'network_info': '[]'},
                          'availability_zone': 'nova',
                          'security_groups': []}
         self.nets1 = [{'id': 'my_netid1',
@@ -422,8 +424,8 @@ class TestNeutronv2Base(test.TestCase):
         nets = number == 1 and self.nets1 or self.nets2
         net_info_cache = []
         for port in port_data:
-            net_info_cache.append({"network": {"id": port['network_id']},
-                                   "id": port['id']})
+            vif = model.VIF(id=port['id'], network={'id': port['network_id']})
+            net_info_cache.append(vif)
 
         instance = copy.copy(self.instance)
         # This line here does not wrap net_info_cache in jsonutils.dumps()
@@ -984,8 +986,8 @@ class TestNeutronv2(TestNeutronv2Base):
 
         net_info_cache = []
         for port in port_data:
-            net_info_cache.append({"network": {"id": port['network_id']},
-                                   "id": port['id']})
+            vif = model.VIF(id=port['id'], network={'id': port['network_id']})
+            net_info_cache.append(vif)
         instance = copy.copy(self.instance)
         instance['info_cache'] = {'network_info':
                                   six.text_type(

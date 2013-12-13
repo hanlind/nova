@@ -45,7 +45,7 @@ def refresh_cache(f):
 
     @functools.wraps(f)
     def wrapper(self, context, *args, **kwargs):
-        res = f(self, context, *args, **kwargs)
+        nw_info = f(self, context, *args, **kwargs)
 
         try:
             # get the instance from arguments (or raise ValueError)
@@ -56,11 +56,14 @@ def refresh_cache(f):
             msg = _('instance is a required argument to use @refresh_cache')
             raise Exception(msg)
 
-        update_instance_cache_with_nw_info(self, context, instance,
-                                           nw_info=res)
-
-        # return the original function's return value
-        return res
+        # only refresh cache if an update is needed
+        if nw_info != instance['info_cache']['network_info']:
+            update_instance_cache_with_nw_info(self, context, instance,
+                                               nw_info=nw_info)
+        else:
+            LOG.debug(_('Network cache for %s does not need update'),
+                      instance['uuid'])
+        return nw_info
     return wrapper
 
 
