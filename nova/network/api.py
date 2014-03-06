@@ -36,35 +36,46 @@ from nova import utils
 LOG = logging.getLogger(__name__)
 
 
-def refresh_cache(f):
+def refresh_cache(*args, **kwargs):
     """Decorator to update the instance_info_cache
 
     Requires context and instance as function args
     """
-    argspec = inspect.getargspec(f)
+    update_cells = kwargs.get('update_cells', True)
 
-    @functools.wraps(f)
-    def wrapper(self, context, *args, **kwargs):
-        nw_info = f(self, context, *args, **kwargs)
+    def outer(f):
+        argspec = inspect.getargspec(f)
 
-        try:
-            # get the instance from arguments (or raise ValueError)
-            instance = kwargs.get('instance')
-            if not instance:
-                instance = args[argspec.args.index('instance') - 2]
-        except ValueError:
-            msg = _('instance is a required argument to use @refresh_cache')
-            raise Exception(msg)
+        @functools.wraps(f)
+        def wrapper(self, context, *args, **kwargs):
+            nw_info = f(self, context, *args, **kwargs)
 
-        # only refresh cache if an update is needed
-        if nw_info != instance['info_cache']['network_info']:
-            update_instance_cache_with_nw_info(self, context, instance,
-                                               nw_info=nw_info)
-        else:
-            LOG.debug(_('Network cache for %s does not need update'),
-                      instance['uuid'])
-        return nw_info
-    return wrapper
+            try:
+                # get the instance from arguments (or raise ValueError)
+                instance = kwargs.get('instance')
+                if not instance:
+                    instance = args[argspec.args.index('instance') - 2]
+            except ValueError:
+                msg = _('instance is a required argument to use '
+                        '@refresh_cache')
+                raise Exception(msg)
+
+            # only refresh cache if an update is needed
+            if nw_info != instance['info_cache']['network_info']:
+                update_instance_cache_with_nw_info(self, context, instance,
+                                                   nw_info=nw_info,
+                                                   update_cells=update_cells)
+            else:
+                LOG.debug(_('Network cache for %s does not need update'),
+                          instance['uuid'])
+            return nw_info
+        return wrapper
+    # NOTE(hanlind): This is needed for the decorator to be used with and
+    # without parens.
+    if kwargs:
+        return outer
+    else:
+        return outer(args[0])
 
 
 def update_instance_cache_with_nw_info(api, context, instance, nw_info=None,
@@ -387,16 +398,14 @@ class API(base.Base):
                 self.db.network_associate(context, project, network_id, True)
 
     @wrap_check_policy
+    # NOTE(comstud): Don't update API cell with new info_cache every
+    # time we pull network info for an instance.  The periodic healing
+    # of info_cache causes too many cells messages.  Healing the API
+    # will happen separately.
+    @refresh_cache(update_cells=False)
     def get_instance_nw_info(self, context, instance):
         """Returns all network info related to an instance."""
-        result = self._get_instance_nw_info(context, instance)
-        # NOTE(comstud): Don't update API cell with new info_cache every
-        # time we pull network info for an instance.  The periodic healing
-        # of info_cache causes too many cells messages.  Healing the API
-        # will happen separately.
-        update_instance_cache_with_nw_info(self, context, instance,
-                                           result, update_cells=False)
-        return result
+        return self._get_instance_nw_info(context, instance)
 
     def _get_instance_nw_info(self, context, instance):
         """Returns all network info related to an instance."""

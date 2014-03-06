@@ -343,7 +343,8 @@ class TestUpdateInstanceCache(test.TestCase):
         self.mox.ReplayAll()
         api.update_instance_cache_with_nw_info(self, self.context,
                                                self.instance,
-                                               nw_info=nw_info)
+                                               nw_info=nw_info,
+                                               update_cells=True)
 
     def test_instance_info_cache_update_called(self):
         nw_info = network_model.NetworkInfo([{'id': 'uid'}])
@@ -352,7 +353,8 @@ class TestUpdateInstanceCache(test.TestCase):
         self.mox.ReplayAll()
         api.update_instance_cache_with_nw_info(self, self.context,
                                                self.instance,
-                                               nw_info=nw_info)
+                                               nw_info=nw_info,
+                                               update_cells=True)
 
     def test_decorator_return_object(self):
         @api.refresh_cache
