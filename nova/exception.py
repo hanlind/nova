@@ -1705,10 +1705,6 @@ class LiveMigrationWithOldNovaNotSafe(NovaException):
                 "Upgrade Nova on %(server)s and try again.")
 
 
-class UnshelveException(NovaException):
-    msg_fmt = _("Error during unshelve instance %(instance_id)s: %(reason)s")
-
-
 class ImageVCPULimitsRangeExceeded(Invalid):
     msg_fmt = _("Image vCPU limits %(sockets)d:%(cores)d:%(threads)d "
                 "exceeds permitted %(maxsockets)d:%(maxcores)d:%(maxthreads)d")

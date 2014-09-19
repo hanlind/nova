@@ -1464,11 +1464,7 @@ class _BaseTaskTestCase(object):
         system_metadata['shelved_at'] = timeutils.utcnow()
         system_metadata['shelved_host'] = 'fake-mini'
         system_metadata['shelved_image_id'] = shelved_image_id
-
-        self.assertRaises(
-            exc.UnshelveException,
-            self.conductor_manager.unshelve_instance,
-            self.context, instance)
+        self.conductor_manager.unshelve_instance(self.context, instance)
         self.assertEqual(instance.vm_state, vm_states.ERROR)
 
     def test_unshelve_offloaded_instance_image_id_is_none(self):
@@ -1640,10 +1636,9 @@ class _BaseTaskTestCase(object):
             mock.patch('nova.scheduler.utils.build_request_spec',
                        return_value=request_spec)
         ) as (rebuild_mock, sig_mock, select_dest_mock, bs_mock):
-            self.assertRaises(exc.NoValidHost,
-                              self.conductor_manager.rebuild_instance,
-                              context=self.context, instance=inst_obj,
-                              **rebuild_args)
+            self.conductor_manager.rebuild_instance(context=self.context,
+                                                    instance=inst_obj,
+                                                    **rebuild_args)
             select_dest_mock.assert_called_once_with(self.context,
                                                      request_spec,
                                                      filter_properties)
@@ -1677,14 +1672,10 @@ class _BaseTaskTestCase(object):
         exception = exc.UnsupportedPolicyException(reason='')
         sig_mock.side_effect = exception
 
-        # build_instances() is a cast, we need to wait for it to complete
+        # rebuild_instance() is a cast, we need to wait for it to complete
         self.useFixture(cast_as_call.CastAsCall(self.stubs))
 
-        self.assertRaises(exc.UnsupportedPolicyException,
-                          self.conductor.rebuild_instance,
-                          self.context,
-                          inst_obj,
-                          **rebuild_args)
+        self.conductor.rebuild_instance(self.context, inst_obj, **rebuild_args)
         updates = {'vm_state': vm_states.ACTIVE, 'task_state': None}
         state_mock.assert_called_once_with(self.context, inst_obj.uuid,
                                            'rebuild_server', updates,

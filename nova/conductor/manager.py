@@ -742,9 +742,7 @@ class ComputeTaskManager(base.Base):
                                    'cannot be found.') % image_id
 
                         LOG.error(reason, instance=instance)
-                        raise exception.UnshelveException(
-                            instance_id=instance.uuid, reason=reason)
-
+                        return
             try:
                 with compute_utils.EventReporter(context, 'schedule_instances',
                                                  instance.uuid):
@@ -801,22 +799,21 @@ class ComputeTaskManager(base.Base):
                                                             filter_properties)
                     host = hosts.pop(0)['host']
                 except exception.NoValidHost as ex:
-                    with excutils.save_and_reraise_exception():
-                        self._set_vm_state_and_notify(context, instance.uuid,
-                                'rebuild_server',
-                                {'vm_state': instance.vm_state,
-                                 'task_state': None}, ex, request_spec)
-                        LOG.warning(_LW("No valid host found for rebuild"),
-                                    instance=instance)
+                    self._set_vm_state_and_notify(
+                            context, instance.uuid, 'rebuild_server',
+                            {'vm_state': instance.vm_state,
+                             'task_state': None}, ex, request_spec)
+                    LOG.warning(_LW("No valid host found for rebuild"),
+                                instance=instance)
+                    return
                 except exception.UnsupportedPolicyException as ex:
-                    with excutils.save_and_reraise_exception():
-                        self._set_vm_state_and_notify(context, instance.uuid,
-                                'rebuild_server',
-                                {'vm_state': instance.vm_state,
-                                 'task_state': None}, ex, request_spec)
-                        LOG.warning(_LW("Server with unsupported policy "
-                                        "cannot be rebuilt"),
-                                    instance=instance)
+                    self._set_vm_state_and_notify(
+                            context, instance.uuid, 'rebuild_server',
+                            {'vm_state': instance.vm_state,
+                             'task_state': None}, ex, request_spec)
+                    LOG.warning(_LW("Server with unsupported policy cannot be "
+                                    "rebuilt"), instance=instance)
+                    return
 
             self.compute_rpcapi.rebuild_instance(context,
                     instance=instance,
