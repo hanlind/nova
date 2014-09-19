@@ -393,7 +393,8 @@ class ShelveComputeAPITestCase(test_compute.BaseTestCase):
 
         db.instance_destroy(self.context, instance['uuid'])
 
-    def test_unshelve(self):
+    @mock.patch('nova.conductor.api.LocalComputeTaskAPI.unshelve_instance')
+    def test_unshelve(self, unshelve_mock):
         # Ensure instance can be unshelved.
         instance = jsonutils.to_primitive(self._create_fake_instance())
         instance_uuid = instance['uuid']
@@ -412,5 +413,6 @@ class ShelveComputeAPITestCase(test_compute.BaseTestCase):
 
         inst_obj.refresh()
         self.assertEqual(inst_obj.task_state, task_states.UNSHELVING)
+        self.assertTrue(unshelve_mock.called)
 
         db.instance_destroy(self.context, instance['uuid'])

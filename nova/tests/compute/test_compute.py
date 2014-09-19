@@ -7109,14 +7109,19 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['min_ram'] = 2
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorMemoryTooSmall,
-            self.compute_api.create, self.context,
-            inst_type, self.fake_image['id'])
-
-        # Now increase the inst_type memory and make sure all is fine.
-        inst_type['memory_mb'] = 2
-        (refs, resv_id) = self.compute_api.create(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            self.assertRaises(exception.FlavorMemoryTooSmall,
+                self.compute_api.create, self.context,
                 inst_type, self.fake_image['id'])
+            self.assertFalse(build_mock.called)
+
+            # Now increase the inst_type memory and make sure all is fine.
+            inst_type['memory_mb'] = 2
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    inst_type, self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_create_with_too_little_disk(self):
@@ -7128,14 +7133,19 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['min_disk'] = 2
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorDiskTooSmall,
-            self.compute_api.create, self.context,
-            inst_type, self.fake_image['id'])
-
-        # Now increase the inst_type disk space and make sure all is fine.
-        inst_type['root_gb'] = 2
-        (refs, resv_id) = self.compute_api.create(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            self.assertRaises(exception.FlavorDiskTooSmall,
+                self.compute_api.create, self.context,
                 inst_type, self.fake_image['id'])
+            self.assertFalse(build_mock.called)
+
+            # Now increase the inst_type disk space and make sure all is fine.
+            inst_type['root_gb'] = 2
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    inst_type, self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_create_with_too_large_image(self):
@@ -7148,14 +7158,19 @@ class ComputeAPITestCase(BaseTestCase):
 
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorDiskTooSmall,
-            self.compute_api.create, self.context,
-            inst_type, self.fake_image['id'])
-
-        # Reduce image to 1 GB limit and ensure it works
-        self.fake_image['size'] = '1073741824'
-        (refs, resv_id) = self.compute_api.create(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            self.assertRaises(exception.FlavorDiskTooSmall,
+                self.compute_api.create, self.context,
                 inst_type, self.fake_image['id'])
+            self.assertFalse(build_mock.called)
+
+            # Reduce image to 1 GB limit and ensure it works
+            self.fake_image['size'] = '1073741824'
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    inst_type, self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_create_just_enough_ram_and_disk(self):
@@ -7170,8 +7185,12 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['name'] = 'fake_name'
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        (refs, resv_id) = self.compute_api.create(self.context,
-                inst_type, self.fake_image['id'])
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    inst_type, self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_create_with_no_ram_and_disk_reqs(self):
@@ -7183,8 +7202,12 @@ class ComputeAPITestCase(BaseTestCase):
 
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        (refs, resv_id) = self.compute_api.create(self.context,
-                inst_type, self.fake_image['id'])
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    inst_type, self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_create_with_deleted_image(self):
@@ -7217,8 +7240,13 @@ class ComputeAPITestCase(BaseTestCase):
                    hardware.VirtNUMATopologyCell(1, set([3, 4]), 512)])
         numa_constraints_mock.return_value = numa_topology
 
-        instances, resv_id = self.compute_api.create(self.context, inst_type,
-                                                     self.fake_image['id'])
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            instances, resv_id = self.compute_api.create(self.context,
+                                                         inst_type,
+                                                         self.fake_image['id'])
+            self.assertTrue(build_mock.called)
+
         numa_constraints_mock.assert_called_once_with(
                 inst_type, fake_image_props)
         self.assertThat(numa_topology._to_dict(),
@@ -7230,9 +7258,12 @@ class ComputeAPITestCase(BaseTestCase):
         # Verify that an instance cannot be created without a display_name.
         cases = [dict(), dict(display_name=None)]
         for instance in cases:
-            (ref, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(),
-                'fake-image-uuid', **instance)
+            with mock.patch.object(self.compute_api.compute_task_api,
+                                   'build_instances') as build_mock:
+                (ref, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(),
+                    'fake-image-uuid', **instance)
+                self.assertTrue(build_mock.called)
             try:
                 self.assertIsNotNone(ref[0]['display_name'])
             finally:
@@ -7240,10 +7271,14 @@ class ComputeAPITestCase(BaseTestCase):
 
     def test_create_instance_sets_system_metadata(self):
         # Make sure image properties are copied into system metadata.
-        (ref, resv_id) = self.compute_api.create(
-                self.context,
-                instance_type=flavors.get_default_flavor(),
-                image_href='fake-image-uuid')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (ref, resv_id) = self.compute_api.create(
+                    self.context,
+                    instance_type=flavors.get_default_flavor(),
+                    image_href='fake-image-uuid')
+            self.assertTrue(build_mock.called)
+
         try:
             sys_metadata = db.instance_system_metadata_get(self.context,
                     ref[0]['uuid'])
@@ -7260,10 +7295,15 @@ class ComputeAPITestCase(BaseTestCase):
 
     def test_create_saves_type_in_system_metadata(self):
         instance_type = flavors.get_default_flavor()
-        (ref, resv_id) = self.compute_api.create(
-                self.context,
-                instance_type=instance_type,
-                image_href='some-fake-image')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (ref, resv_id) = self.compute_api.create(
+                    self.context,
+                    instance_type=instance_type,
+                    image_href='some-fake-image')
+            self.assertTrue(build_mock.called)
+
         try:
             sys_metadata = db.instance_system_metadata_get(self.context,
                     ref[0]['uuid'])
@@ -7283,11 +7323,16 @@ class ComputeAPITestCase(BaseTestCase):
     def test_create_instance_associates_security_groups(self):
         # Make sure create associates security groups.
         group = self._create_group()
-        (ref, resv_id) = self.compute_api.create(
-                self.context,
-                instance_type=flavors.get_default_flavor(),
-                image_href='some-fake-image',
-                security_group=['testgroup'])
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (ref, resv_id) = self.compute_api.create(
+                    self.context,
+                    instance_type=flavors.get_default_flavor(),
+                    image_href='some-fake-image',
+                    security_group=['testgroup'])
+            self.assertTrue(build_mock.called)
+
         try:
             self.assertEqual(len(db.security_group_get_by_instance(
                              self.context, ref[0]['uuid'])), 1)
@@ -7344,9 +7389,13 @@ class ComputeAPITestCase(BaseTestCase):
 
         # NOTE(mikal): a string of length 48510 encodes to 65532 characters of
         # base64
-        (refs, resv_id) = self.compute_api.create(
-            self.context, inst_type, self.fake_image['id'],
-            user_data=base64.encodestring('1' * 48510))
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(
+                self.context, inst_type, self.fake_image['id'],
+                user_data=base64.encodestring('1' * 48510))
+            self.assertTrue(build_mock.called)
+
         db.instance_destroy(self.context, refs[0]['uuid'])
 
     def test_populate_instance_for_create(self):
@@ -7388,9 +7437,12 @@ class ComputeAPITestCase(BaseTestCase):
                  ('<}\x1fh\x10e\x08l\x02l\x05o\x12!{>', 'hello'),
                  ('hello_server', 'hello-server')]
         for display_name, hostname in cases:
-            (ref, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image',
-                display_name=display_name)
+            with mock.patch.object(self.compute_api.compute_task_api,
+                                   'build_instances') as build_mock:
+                (ref, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image',
+                    display_name=display_name)
+                self.assertTrue(build_mock.called)
             try:
                 self.assertEqual(ref[0]['hostname'], hostname)
             finally:
@@ -7404,9 +7456,13 @@ class ComputeAPITestCase(BaseTestCase):
         group.create()
 
         inst_type = flavors.get_default_flavor()
-        (refs, resv_id) = self.compute_api.create(
-            self.context, inst_type, self.fake_image['id'],
-            scheduler_hints={'group': group.uuid})
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(
+                self.context, inst_type, self.fake_image['id'],
+                scheduler_hints={'group': group.uuid})
+            self.assertTrue(build_mock.called)
 
         group = objects.InstanceGroup.get_by_uuid(self.context, group.uuid)
         self.assertIn(refs[0]['uuid'], group.members)
@@ -7417,9 +7473,13 @@ class ComputeAPITestCase(BaseTestCase):
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
         inst_type = flavors.get_default_flavor()
-        (refs, resv_id) = self.compute_api.create(
-            self.context, inst_type, self.fake_image['id'],
-            scheduler_hints={'group': 'groupname'})
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(
+                self.context, inst_type, self.fake_image['id'],
+                scheduler_hints={'group': 'groupname'})
+            self.assertTrue(build_mock.called)
 
         group = objects.InstanceGroup.get_by_name(self.context, 'groupname')
         self.assertEqual('groupname', group.name)
@@ -7429,9 +7489,13 @@ class ComputeAPITestCase(BaseTestCase):
 
         # On a second instance, make sure it gets added to the group that was
         # auto-created above
-        (refs2, resv_id) = self.compute_api.create(
-            self.context, inst_type, self.fake_image['id'],
-            scheduler_hints={'group': 'groupname'})
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs2, resv_id) = self.compute_api.create(
+                self.context, inst_type, self.fake_image['id'],
+                scheduler_hints={'group': 'groupname'})
+            self.assertTrue(build_mock.called)
+
         group = objects.InstanceGroup.get_by_name(self.context, 'groupname')
         self.assertEqual('groupname', group.name)
         self.assertIn('legacy', group.policies)
@@ -7445,11 +7509,15 @@ class ComputeAPITestCase(BaseTestCase):
         # Make sure destroying disassociates security groups.
         group = self._create_group()
 
-        (ref, resv_id) = self.compute_api.create(
-                self.context,
-                instance_type=flavors.get_default_flavor(),
-                image_href='some-fake-image',
-                security_group=['testgroup'])
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (ref, resv_id) = self.compute_api.create(
+                    self.context,
+                    instance_type=flavors.get_default_flavor(),
+                    image_href='some-fake-image',
+                    security_group=['testgroup'])
+            self.assertTrue(build_mock.called)
+
         try:
             db.instance_destroy(self.context, ref[0]['uuid'])
             group = db.security_group_get(self.context, group['id'])
@@ -7461,11 +7529,14 @@ class ComputeAPITestCase(BaseTestCase):
         # Make sure destroying security groups disassociates instances.
         group = self._create_group()
 
-        (ref, resv_id) = self.compute_api.create(
-                self.context,
-                instance_type=flavors.get_default_flavor(),
-                image_href='some-fake-image',
-                security_group=['testgroup'])
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (ref, resv_id) = self.compute_api.create(
+                    self.context,
+                    instance_type=flavors.get_default_flavor(),
+                    image_href='some-fake-image',
+                    security_group=['testgroup'])
+            self.assertTrue(build_mock.called)
 
         try:
             db.security_group_destroy(self.context, group['id'])
@@ -7561,7 +7632,12 @@ class ComputeAPITestCase(BaseTestCase):
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
         self.compute.run_instance(self.context, instance, {}, {}, None, None,
                 None, True, None, False)
-        self.compute_api.rebuild(self.context, instance, '', 'new_password')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.compute_api.rebuild(self.context, instance, '',
+                                     'new_password')
+            self.assertTrue(rebuild_mock.called)
 
         instance = db.instance_get_by_uuid(self.context, instance_uuid)
         self.assertEqual(instance['task_state'], task_states.REBUILDING)
@@ -7595,15 +7671,20 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['min_ram'] = 128
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorMemoryTooSmall,
-            self.compute_api.rebuild, self.context,
-            instance, self.fake_image['id'], 'new_password')
-
-        # Reduce image memory requirements and make sure it works
-        self.fake_image['min_ram'] = 64
-
-        self.compute_api.rebuild(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.assertRaises(exception.FlavorMemoryTooSmall,
+                self.compute_api.rebuild, self.context,
                 instance, self.fake_image['id'], 'new_password')
+            self.assertFalse(rebuild_mock.called)
+
+            # Reduce image memory requirements and make sure it works
+            self.fake_image['min_ram'] = 64
+
+            self.compute_api.rebuild(self.context,
+                    instance, self.fake_image['id'], 'new_password')
+            self.assertTrue(rebuild_mock.called)
+
         db.instance_destroy(self.context, instance['uuid'])
 
     def test_rebuild_with_too_little_disk(self):
@@ -7619,15 +7700,20 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['min_disk'] = 2
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorDiskTooSmall,
-            self.compute_api.rebuild, self.context,
-            instance, self.fake_image['id'], 'new_password')
-
-        # Reduce image disk requirements and make sure it works
-        self.fake_image['min_disk'] = 1
-
-        self.compute_api.rebuild(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.assertRaises(exception.FlavorDiskTooSmall,
+                self.compute_api.rebuild, self.context,
                 instance, self.fake_image['id'], 'new_password')
+            self.assertFalse(rebuild_mock.called)
+
+            # Reduce image disk requirements and make sure it works
+            self.fake_image['min_disk'] = 1
+
+            self.compute_api.rebuild(self.context,
+                    instance, self.fake_image['id'], 'new_password')
+            self.assertTrue(rebuild_mock.called)
+
         db.instance_destroy(self.context, instance['uuid'])
 
     def test_rebuild_with_just_enough_ram_and_disk(self):
@@ -7644,8 +7730,12 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['min_disk'] = 1
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.compute_api.rebuild(self.context,
-                instance, self.fake_image['id'], 'new_password')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.compute_api.rebuild(self.context,
+                    instance, self.fake_image['id'], 'new_password')
+            self.assertTrue(rebuild_mock.called)
+
         db.instance_destroy(self.context, instance['uuid'])
 
     def test_rebuild_with_no_ram_and_disk_reqs(self):
@@ -7659,8 +7749,12 @@ class ComputeAPITestCase(BaseTestCase):
                        fake_extract_flavor)
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.compute_api.rebuild(self.context,
-                instance, self.fake_image['id'], 'new_password')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.compute_api.rebuild(self.context,
+                    instance, self.fake_image['id'], 'new_password')
+            self.assertTrue(rebuild_mock.called)
+
         db.instance_destroy(self.context, instance['uuid'])
 
     def test_rebuild_with_too_large_image(self):
@@ -7676,23 +7770,31 @@ class ComputeAPITestCase(BaseTestCase):
         self.fake_image['size'] = '1073741825'
         self.stubs.Set(fake_image._FakeImageService, 'show', self.fake_show)
 
-        self.assertRaises(exception.FlavorDiskTooSmall,
-            self.compute_api.rebuild, self.context,
-            instance, self.fake_image['id'], 'new_password')
-
-        # Reduce image to 1 GB limit and ensure it works
-        self.fake_image['size'] = '1073741824'
-        self.compute_api.rebuild(self.context,
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'rebuild_instance') as rebuild_mock:
+            self.assertRaises(exception.FlavorDiskTooSmall,
+                self.compute_api.rebuild, self.context,
                 instance, self.fake_image['id'], 'new_password')
+            self.assertFalse(rebuild_mock.called)
+
+            # Reduce image to 1 GB limit and ensure it works
+            self.fake_image['size'] = '1073741824'
+            self.compute_api.rebuild(self.context,
+                    instance, self.fake_image['id'], 'new_password')
+            self.assertTrue(rebuild_mock.called)
+
         db.instance_destroy(self.context, instance['uuid'])
 
     def test_hostname_create(self):
         # Ensure instance hostname is set during creation.
         inst_type = flavors.get_flavor_by_name('m1.tiny')
-        (instances, _) = self.compute_api.create(self.context,
-                                                 inst_type,
-                                                 image_href='some-fake-image',
-                                                 display_name='test host')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (instances, _) = self.compute_api.create(
+                    self.context, inst_type, image_href='some-fake-image',
+                    display_name='test host')
+            self.assertTrue(build_mock.called)
 
         self.assertEqual('test-host', instances[0]['hostname'])
 
@@ -8623,8 +8725,12 @@ class ComputeAPITestCase(BaseTestCase):
         """Verify building an instance has a reservation_id that
         matches return value from create.
         """
-        (refs, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image')
+            self.assertTrue(build_mock.called)
+
         try:
             self.assertEqual(len(refs), 1)
             self.assertEqual(refs[0]['reservation_id'], resv_id)
@@ -8636,9 +8742,13 @@ class ComputeAPITestCase(BaseTestCase):
         reservation_id being returned equal to reservation id set
         in both instances.
         """
-        (refs, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image',
-                min_count=2, max_count=2)
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image',
+                    min_count=2, max_count=2)
+            self.assertTrue(build_mock.called)
+
         try:
             self.assertEqual(len(refs), 2)
             self.assertIsNotNone(resv_id)
@@ -8650,27 +8760,42 @@ class ComputeAPITestCase(BaseTestCase):
 
     def test_multi_instance_display_name_template(self):
         self.flags(multi_instance_display_name_template='%(name)s')
-        (refs, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image',
-                min_count=2, max_count=2, display_name='x')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image',
+                    min_count=2, max_count=2, display_name='x')
+            self.assertTrue(build_mock.called)
+
         self.assertEqual(refs[0]['display_name'], 'x')
         self.assertEqual(refs[0]['hostname'], 'x')
         self.assertEqual(refs[1]['display_name'], 'x')
         self.assertEqual(refs[1]['hostname'], 'x')
 
         self.flags(multi_instance_display_name_template='%(name)s-%(count)s')
-        (refs, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image',
-                min_count=2, max_count=2, display_name='x')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image',
+                    min_count=2, max_count=2, display_name='x')
+            self.assertTrue(build_mock.called)
+
         self.assertEqual(refs[0]['display_name'], 'x-1')
         self.assertEqual(refs[0]['hostname'], 'x-1')
         self.assertEqual(refs[1]['display_name'], 'x-2')
         self.assertEqual(refs[1]['hostname'], 'x-2')
 
         self.flags(multi_instance_display_name_template='%(name)s-%(uuid)s')
-        (refs, resv_id) = self.compute_api.create(self.context,
-                flavors.get_default_flavor(), image_href='some-fake-image',
-                min_count=2, max_count=2, display_name='x')
+
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            (refs, resv_id) = self.compute_api.create(self.context,
+                    flavors.get_default_flavor(), image_href='some-fake-image',
+                    min_count=2, max_count=2, display_name='x')
+            self.assertTrue(build_mock.called)
+
         self.assertEqual(refs[0]['display_name'], 'x-%s' % refs[0]['uuid'])
         self.assertEqual(refs[0]['hostname'], 'x-%s' % refs[0]['uuid'])
         self.assertEqual(refs[1]['display_name'], 'x-%s' % refs[1]['uuid'])
@@ -10356,8 +10481,11 @@ class ComputePolicyTestCase(BaseTestCase):
                  "network:validate_networks": []}
         self.policy.set_rules(rules)
 
-        self.compute_api.create(self.context, None, '1',
-                                availability_zone='1:1')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            self.compute_api.create(self.context, None, '1',
+                                    availability_zone='1:1')
+            self.assertTrue(build_mock.called)
 
 
 class DisabledInstanceTypesTestCase(BaseTestCase):
@@ -10380,8 +10508,11 @@ class DisabledInstanceTypesTestCase(BaseTestCase):
     def test_can_build_instance_from_visible_instance_type(self):
         self.inst_type['disabled'] = False
         # Assert that exception.FlavorNotFound is not raised
-        self.compute_api.create(self.context, self.inst_type,
-                                image_href='some-fake-image')
+        with mock.patch.object(self.compute_api.compute_task_api,
+                               'build_instances') as build_mock:
+            self.compute_api.create(self.context, self.inst_type,
+                                    image_href='some-fake-image')
+            self.assertTrue(build_mock.called)
 
     def test_cannot_build_instance_from_disabled_instance_type(self):
         self.inst_type['disabled'] = True
