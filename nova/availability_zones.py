@@ -167,7 +167,7 @@ def get_availability_zones(context, get_only_available=False,
 
 def get_instance_availability_zone(context, instance):
     """Return availability zone of specified instance."""
-    host = str(instance.get('host'))
+    host = instance.get('host')
     if not host:
         return None
 

@@ -23,6 +23,7 @@ import six
 from nova import availability_zones as az
 from nova import context
 from nova import db
+from nova import objects
 from nova import test
 from nova.tests.unit.api.openstack import fakes
 
@@ -256,3 +257,10 @@ class AvailabilityZoneTestCases(test.TestCase):
 
         self.assertEqual(self.availability_zone,
                 az.get_instance_availability_zone(self.context, fake_inst))
+
+    def test_get_instance_availability_zone_no_host(self):
+        # Test get_instance_availability_zone() returns None if host not set
+        fake_inst = objects.Instance(host=None, availability_zone='inst-az')
+
+        result = az.get_instance_availability_zone(self.context, fake_inst)
+        self.assertIsNone(result)

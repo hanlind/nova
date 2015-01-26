@@ -32,7 +32,7 @@ class ExtendedAZController(wsgi.Controller):
             # desired availability_zone that *may* exist in the instance
             # record itself.
             az = instance.availability_zone
-        server[key] = az
+        server[key] = az or ''
 
     @wsgi.extends
     def show(self, req, resp_obj, id):
