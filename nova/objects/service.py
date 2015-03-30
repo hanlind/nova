@@ -41,7 +41,8 @@ class Service(base.NovaPersistentObject, base.NovaObject,
     # Version 1.9: ComputeNode version 1.10
     # Version 1.10: Changes behaviour of loading compute_node
     # Version 1.11: Added get_by_host_and_binary
-    VERSION = '1.11'
+    # Version 1.12: Removed compute_node nested object field
+    VERSION = '1.12'
 
     fields = {
         'id': fields.IntegerField(read_only=True),
@@ -52,7 +53,6 @@ class Service(base.NovaPersistentObject, base.NovaObject,
         'disabled': fields.BooleanField(),
         'disabled_reason': fields.StringField(nullable=True),
         'availability_zone': fields.StringField(nullable=True),
-        'compute_node': fields.ObjectField('ComputeNode'),
         }
 
     obj_relationships = {
@@ -65,8 +65,8 @@ class Service(base.NovaPersistentObject, base.NovaObject,
         if _target_version < (1, 10):
             target_compute_version = self.obj_calculate_child_version(
                 target_version, 'compute_node')
-            # service.compute_node was not lazy-loaded, we need to provide it
-            # when called
+            # service.compute_node was removed in version 1.12, we need to
+            # provide it when needed for versions older that 1.10
             self._do_compute_node(self._context, primitive,
                                   target_compute_version)
         super(Service, self).obj_make_compatible(primitive, target_version)
@@ -89,41 +89,11 @@ class Service(base.NovaPersistentObject, base.NovaObject,
         for key in service.fields:
             if key in allow_missing and key not in db_service:
                 continue
-            if key == 'compute_node':
-                #  NOTE(sbauza); We want to only lazy-load compute_node
-                continue
             else:
                 service[key] = db_service[key]
         service._context = context
         service.obj_reset_changes()
         return service
-
-    def obj_load_attr(self, attrname):
-        if not self._context:
-            raise exception.OrphanedObjectError(method='obj_load_attr',
-                                                objtype=self.obj_name())
-
-        LOG.debug("Lazy-loading `%(attr)s' on %(name)s id %(id)s",
-                  {'attr': attrname,
-                   'name': self.obj_name(),
-                   'id': self.id,
-                   })
-        if attrname != 'compute_node':
-            raise exception.ObjectActionError(
-                action='obj_load_attr',
-                reason='attribute %s not lazy-loadable' % attrname)
-        if self.binary == 'nova-compute':
-            # Only n-cpu services have attached compute_node(s)
-            compute_nodes = objects.ComputeNodeList.get_all_by_host(
-                self._context, self.host)
-        else:
-            # NOTE(sbauza); Previous behaviour was raising a ServiceNotFound,
-            # we keep it for backwards compatibility
-            raise exception.ServiceNotFound(service_id=self.id)
-        # NOTE(sbauza): Some drivers (VMware, Ironic) can have multiple nodes
-        # for the same service, but for keeping same behaviour, returning only
-        # the first elem of the list
-        self.compute_node = compute_nodes[0]
 
     @base.remotable_classmethod
     def get_by_id(cls, context, service_id):
@@ -189,7 +159,8 @@ class ServiceList(base.ObjectListBase, base.NovaObject):
     # Version 1.7: Service version 1.9
     # Version 1.8: Service version 1.10
     # Version 1.9: Added get_by_binary() and Service version 1.11
-    VERSION = '1.9'
+    # Version 1.10: Service version 1.12
+    VERSION = '1.10'
 
     fields = {
         'objects': fields.ListOfObjectsField('Service'),
@@ -206,6 +177,7 @@ class ServiceList(base.ObjectListBase, base.NovaObject):
         '1.7': '1.9',
         '1.8': '1.10',
         '1.9': '1.11',
+        '1.10': '1.12',
         }
 
     @base.remotable_classmethod

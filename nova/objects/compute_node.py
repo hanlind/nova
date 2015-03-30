@@ -37,11 +37,12 @@ class ComputeNode(base.NovaPersistentObject, base.NovaObject,
     # Version 1.8: Added get_by_host_and_nodename()
     # Version 1.9: Added pci_device_pools
     # Version 1.10: Added get_first_node_by_host_for_old_compat()
-    VERSION = '1.10'
+    # Version 1.11: Changed service_id field to be nullable
+    VERSION = '1.11'
 
     fields = {
         'id': fields.IntegerField(read_only=True),
-        'service_id': fields.IntegerField(),
+        'service_id': fields.IntegerField(nullable=True),
         'host': fields.StringField(nullable=True),
         'vcpus': fields.IntegerField(),
         'memory_mb': fields.IntegerField(),
@@ -262,13 +263,6 @@ class ComputeNode(base.NovaPersistentObject, base.NovaObject,
     def destroy(self):
         db.compute_node_delete(self._context, self.id)
 
-    @property
-    def service(self):
-        if not hasattr(self, '_cached_service'):
-            self._cached_service = objects.Service.get_by_id(self._context,
-                                                             self.service_id)
-        return self._cached_service
-
 
 class ComputeNodeList(base.ObjectListBase, base.NovaObject):
     # Version 1.0: Initial version
@@ -283,7 +277,8 @@ class ComputeNodeList(base.ObjectListBase, base.NovaObject):
     # Version 1.8 ComputeNode version 1.8 + add get_all_by_host()
     # Version 1.9 ComputeNode version 1.9
     # Version 1.10 ComputeNode version 1.10
-    VERSION = '1.10'
+    # Version 1.11 ComputeNode version 1.11
+    VERSION = '1.11'
     fields = {
         'objects': fields.ListOfObjectsField('ComputeNode'),
         }
@@ -300,6 +295,7 @@ class ComputeNodeList(base.ObjectListBase, base.NovaObject):
         '1.8': '1.8',
         '1.9': '1.9',
         '1.10': '1.10',
+        '1.11': '1.11',
         }
 
     @base.remotable_classmethod

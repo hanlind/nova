@@ -21,7 +21,6 @@ from nova import exception
 from nova import objects
 from nova.objects import aggregate
 from nova.objects import service
-from nova.tests.unit.objects import test_compute_node
 from nova.tests.unit.objects import test_objects
 
 NOW = timeutils.utcnow().replace(microsecond=0)
@@ -216,29 +215,6 @@ class _TestServiceObject(object):
         services = service.ServiceList.get_all(self.context, set_zones=True)
         self.assertEqual(1, len(services))
         self.assertEqual('test-az', services[0].availability_zone)
-
-    def test_compute_node(self):
-        fake_compute_node = objects.ComputeNode._from_db_object(
-            self.context, objects.ComputeNode(),
-            test_compute_node.fake_compute_node)
-        self.mox.StubOutWithMock(objects.ComputeNodeList, 'get_all_by_host')
-        objects.ComputeNodeList.get_all_by_host(
-            self.context, 'fake-host').AndReturn(
-                [fake_compute_node])
-        self.mox.ReplayAll()
-        service_obj = service.Service(id=123, host="fake-host",
-                                      binary="nova-compute")
-        service_obj._context = self.context
-        self.assertEqual(service_obj.compute_node,
-                         fake_compute_node)
-        # Make sure it doesn't re-fetch this
-        service_obj.compute_node
-
-    def test_load_when_orphaned(self):
-        service_obj = service.Service()
-        service_obj.id = 123
-        self.assertRaises(exception.OrphanedObjectError,
-                          getattr, service_obj, 'compute_node')
 
     @mock.patch.object(objects.ComputeNodeList, 'get_all_by_host')
     def test_obj_make_compatible_for_compute_node(self, get_all_by_host):

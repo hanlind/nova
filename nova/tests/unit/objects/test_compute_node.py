@@ -324,18 +324,6 @@ class _TestComputeNodeObject(object):
         compute.id = 123
         compute.destroy()
 
-    def test_service(self):
-        self.mox.StubOutWithMock(service.Service, 'get_by_id')
-        service.Service.get_by_id(self.context, 456).AndReturn('my-service')
-        self.mox.ReplayAll()
-        compute = compute_node.ComputeNode()
-        compute._context = self.context
-        compute.id = 123
-        compute.service_id = 456
-        self.assertEqual('my-service', compute.service)
-        # Make sure it doesn't call Service.get_by_id() again
-        self.assertEqual('my-service', compute.service)
-
     def test_get_all(self):
         self.mox.StubOutWithMock(db, 'compute_node_get_all')
         db.compute_node_get_all(self.context).AndReturn([fake_compute_node])
