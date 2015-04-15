@@ -1193,6 +1193,30 @@ class TestObjectSerializer(_BaseTestCase):
         self.assertIsInstance(thing2['foo'], base.NovaObject)
 
 
+class FakeObj(base.NovaObject):
+    @base.serialize_args
+    def dummy_method(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
+class TestArgsSerializer(test.NoDBTestCase):
+    def test_serialize_args(self):
+        now = timeutils.utcnow()
+        str_now = timeutils.strtime(at=now)
+
+        obj = FakeObj()
+        obj.dummy_method('untouched', now, now, a='untouched', b=now, c=now)
+
+        expected_args = ('untouched', str_now, str_now)
+        for index, val in enumerate(obj.args):
+            self.assertEqual(expected_args[index], val)
+
+        expected_kwargs = {'a': 'untouched', 'b': str_now, 'c': str_now}
+        for key, val in obj.kwargs.iteritems():
+            self.assertEqual(expected_kwargs[key], val)
+
+
 # NOTE(danms): The hashes in this list should only be changed if
 # they come with a corresponding version bump in the affected
 # objects
@@ -1214,6 +1238,7 @@ object_data = {
     'EC2InstanceMapping': '1.0-e9c3257badcc3aa14089b0a62f163108',
     'EC2SnapshotMapping': '1.0-a545acd0d1519d4316b9b00f30e59b4d',
     'EC2VolumeMapping': '1.0-15710aa212b5cbfdb155fdc81cce4ede',
+    'FakeObj': '1.0-b3ccc6182755365613254b4282e4a0a8',
     'FixedIP': '1.10-4e8060f91f6c94ae73d557708ec62f56',
     'FixedIPList': '1.10-724a59f2446d917d0bd13d6aa33edf8a',
     'Flavor': '1.1-01ed47361fbe76bf728edf667d3f45d3',
