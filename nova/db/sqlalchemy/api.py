@@ -5104,9 +5104,11 @@ def agent_build_update(context, agent_build_id, values):
 
 @require_context
 def bw_usage_get(context, uuid, start_period, mac, use_slave=False):
+    values = {'start_period': start_period}
+    convert_objects_related_datetimes(values, 'start_period')
     return model_query(context, models.BandwidthUsage, read_deleted="yes",
                        use_slave=use_slave).\
-                           filter_by(start_period=start_period).\
+                           filter_by(start_period=values['start_period']).\
                            filter_by(uuid=uuid).\
                            filter_by(mac=mac).\
                            first()
@@ -5114,11 +5116,13 @@ def bw_usage_get(context, uuid, start_period, mac, use_slave=False):
 
 @require_context
 def bw_usage_get_by_uuids(context, uuids, start_period, use_slave=False):
+    values = {'start_period': start_period}
+    convert_objects_related_datetimes(values, 'start_period')
     return (
         model_query(context, models.BandwidthUsage, read_deleted="yes",
                     use_slave=use_slave).
         filter(models.BandwidthUsage.uuid.in_(uuids)).
-        filter_by(start_period=start_period).
+        filter_by(start_period=values['start_period']).
         all()
     )
 
@@ -5131,7 +5135,10 @@ def bw_usage_update(context, uuid, mac, start_period, bw_in, bw_out,
     session = get_session()
 
     if last_refreshed is None:
-        last_refreshed = timeutils.utcnow()
+        # NOTE(llu) last_refreshed should be in the same format
+        # no matter it's generated here or passed in as parameter
+        # after serialization
+        last_refreshed = timeutils.strtime()
 
     # NOTE(comstud): More often than not, we'll be updating records vs
     # creating records.  Optimize accordingly, trying to update existing
@@ -5141,10 +5148,13 @@ def bw_usage_update(context, uuid, mac, start_period, bw_in, bw_out,
                   'last_ctr_in': last_ctr_in,
                   'last_ctr_out': last_ctr_out,
                   'bw_in': bw_in,
-                  'bw_out': bw_out}
+                  'bw_out': bw_out,
+                  'start_period': start_period}
+        datetime_keys = ('start_period', 'last_refreshed')
+        convert_objects_related_datetimes(values, *datetime_keys)
         rows = model_query(context, models.BandwidthUsage,
                               session=session, read_deleted="yes").\
-                      filter_by(start_period=start_period).\
+                      filter_by(start_period=values['start_period']).\
                       filter_by(uuid=uuid).\
                       filter_by(mac=mac).\
                       update(values, synchronize_session=False)
@@ -5152,10 +5162,10 @@ def bw_usage_update(context, uuid, mac, start_period, bw_in, bw_out,
             return
 
         bwusage = models.BandwidthUsage()
-        bwusage.start_period = start_period
+        bwusage.start_period = values['start_period']
         bwusage.uuid = uuid
         bwusage.mac = mac
-        bwusage.last_refreshed = last_refreshed
+        bwusage.last_refreshed = values['last_refreshed']
         bwusage.bw_in = bw_in
         bwusage.bw_out = bw_out
         bwusage.last_ctr_in = last_ctr_in
