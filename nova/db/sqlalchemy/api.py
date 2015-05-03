@@ -4624,29 +4624,6 @@ def security_group_default_rule_list(context):
 ###################
 
 
-@main_context_manager.writer
-def provider_fw_rule_create(context, rule):
-    fw_rule_ref = models.ProviderFirewallRule()
-    fw_rule_ref.update(rule)
-    fw_rule_ref.save(context.session)
-    return fw_rule_ref
-
-
-@main_context_manager.reader
-def provider_fw_rule_get_all(context):
-    return model_query(context, models.ProviderFirewallRule).all()
-
-
-@main_context_manager.writer
-def provider_fw_rule_destroy(context, rule_id):
-    context.session.query(models.ProviderFirewallRule).\
-        filter_by(id=rule_id).\
-        soft_delete()
-
-
-###################
-
-
 @require_context
 @main_context_manager.writer
 def project_get_networks(context, project_id, associate=True):

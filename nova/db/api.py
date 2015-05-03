@@ -1462,24 +1462,6 @@ def security_group_default_rule_list(context):
 ###################
 
 
-def provider_fw_rule_create(context, rule):
-    """Add a firewall rule at the provider level (all hosts & instances)."""
-    return IMPL.provider_fw_rule_create(context, rule)
-
-
-def provider_fw_rule_get_all(context):
-    """Get all provider-level firewall rules."""
-    return IMPL.provider_fw_rule_get_all(context)
-
-
-def provider_fw_rule_destroy(context, rule_id):
-    """Delete a provider firewall rule from the database."""
-    return IMPL.provider_fw_rule_destroy(context, rule_id)
-
-
-###################
-
-
 def project_get_networks(context, project_id, associate=True):
     """Return the network associated with the project.
 

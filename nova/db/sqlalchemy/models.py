@@ -699,18 +699,6 @@ class SecurityGroupIngressDefaultRule(BASE, NovaBase, models.SoftDeleteMixin):
     cidr = Column(types.CIDR())
 
 
-class ProviderFirewallRule(BASE, NovaBase, models.SoftDeleteMixin):
-    """Represents a rule in a security group."""
-    __tablename__ = 'provider_fw_rules'
-    __table_args__ = ()
-    id = Column(Integer, primary_key=True, nullable=False)
-
-    protocol = Column(String(5))  # "tcp", "udp", or "icmp"
-    from_port = Column(Integer)
-    to_port = Column(Integer)
-    cidr = Column(types.CIDR())
-
-
 class KeyPair(BASE, NovaBase, models.SoftDeleteMixin):
     """Represents a public key pair for ssh / WinRM."""
     __tablename__ = 'key_pairs'

@@ -210,6 +210,10 @@ class NovaMigrationsCheckers(test_migrations.ModelsMigrationsSync,
             # 292 drops completely orphaned tables with no users, so
             # it can be done without affecting anything.
             292,
+
+            # 335 drops completely orphaned tables with no users, so
+            # it can be done without affecting anything.
+            335,
         ]
         # Reviewers: DO NOT ALLOW THINGS TO BE ADDED HERE
 
@@ -915,6 +919,10 @@ class NovaMigrationsCheckers(test_migrations.ModelsMigrationsSync,
         self.assertColumnExists(engine, 'instance_extra', 'device_metadata')
         self.assertColumnExists(engine, 'shadow_instance_extra',
                                         'device_metadata')
+
+    def _check_335(self, engine, data):
+        self.assertTableNotExists(engine, 'provider_fw_rules')
+        self.assertTableNotExists(engine, 'shadow_provider_fw_rules')
 
 
 class TestNovaMigrationsSQLite(NovaMigrationsCheckers,

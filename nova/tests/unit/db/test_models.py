@@ -56,7 +56,6 @@ class TestSoftDeletesDeprecated(test.NoDBTestCase):
             'networks',
             'pci_devices',
             'project_user_quotas',
-            'provider_fw_rules',
             'quota_classes',
             'quota_usages',
             'quotas',
