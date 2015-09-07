@@ -529,7 +529,7 @@ class _BaseTaskTestCase(object):
         for instance in instances:
             set_state_calls.append(mock.call(
                 self.context, instance.uuid, 'compute_task', 'build_instances',
-                updates, exception, spec, self.conductor_manager.db))
+                updates, exception, spec))
             cleanup_network_calls.append(mock.call(
                 self.context, mock.ANY, None))
         state_mock.assert_has_calls(set_state_calls)
@@ -570,8 +570,7 @@ class _BaseTaskTestCase(object):
                 filter_properties, instances[0].uuid)
             set_vm_state_and_notify.assert_called_once_with(
                 self.context, instances[0].uuid, 'compute_task',
-                'build_instances', updates, mock.ANY, {},
-                self.conductor_manager.db)
+                'build_instances', updates, mock.ANY, {})
             cleanup_mock.assert_called_once_with(self.context, mock.ANY, None)
 
         _test()
@@ -1012,8 +1011,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                 {'vm_state': vm_states.ACTIVE,
                  'task_state': None,
                  'expected_task_state': task_states.MIGRATING},
-                ex, self._build_request_spec(inst_obj),
-                self.conductor_manager.db)
+                ex, self._build_request_spec(inst_obj))
 
     def test_migrate_server_deals_with_invalidcpuinfo_exception(self):
         instance = fake_instance.fake_db_instance(uuid='uuid',
@@ -1037,8 +1035,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                 {'vm_state': vm_states.ACTIVE,
                  'task_state': None,
                  'expected_task_state': task_states.MIGRATING},
-                ex, self._build_request_spec(inst_obj),
-                self.conductor_manager.db)
+                ex, self._build_request_spec(inst_obj))
         self.mox.ReplayAll()
 
         self.conductor = utils.ExceptionHelper(self.conductor)
@@ -1087,7 +1084,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                         dict(vm_state=vm_states.ERROR,
                              task_state=inst_obj.task_state,
                              expected_task_state=task_states.MIGRATING,),
-                        expected_ex, request_spec, self.conductor.db)
+                        expected_ex, request_spec)
         self.assertEqual(ex.kwargs['reason'], six.text_type(expected_ex))
 
     def test_set_vm_state_and_notify(self):
@@ -1095,7 +1092,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                                  'set_vm_state_and_notify')
         scheduler_utils.set_vm_state_and_notify(
                 self.context, 1, 'compute_task', 'method', 'updates',
-                'ex', 'request_spec', self.conductor.db)
+                'ex', 'request_spec')
 
         self.mox.ReplayAll()
 

@@ -29,7 +29,6 @@ from nova.compute import utils as compute_utils
 from nova.compute import vm_states
 from nova.conductor.tasks import live_migrate
 from nova.conductor.tasks import migrate
-from nova.db import base
 from nova import exception
 from nova.i18n import _, _LE, _LI, _LW
 from nova import image
@@ -135,7 +134,7 @@ class ConductorManager(manager.Manager):
         objects.Service.clear_min_version_cache()
 
 
-class ComputeTaskManager(base.Base):
+class ComputeTaskManager(object):
     """Namespace for compute methods.
 
     This class presents an rpc API for nova-conductor under the 'compute_task'
@@ -147,7 +146,6 @@ class ComputeTaskManager(base.Base):
     target = messaging.Target(namespace='compute_task', version='1.11')
 
     def __init__(self):
-        super(ComputeTaskManager, self).__init__()
         self.compute_rpcapi = compute_rpcapi.ComputeAPI()
         self.image_api = image.API()
         self.network_api = network.API()
@@ -250,7 +248,7 @@ class ComputeTaskManager(base.Base):
                                  ex, request_spec):
         scheduler_utils.set_vm_state_and_notify(
                 context, instance_uuid, 'compute_task', method, updates,
-                ex, request_spec, self.db)
+                ex, request_spec)
 
     def _cleanup_allocated_networks(
             self, context, instance, requested_networks):
@@ -286,7 +284,7 @@ class ComputeTaskManager(base.Base):
                 dict(vm_state=vm_state,
                      task_state=task_state,
                      expected_task_state=task_states.MIGRATING,),
-                ex, request_spec, self.db)
+                ex, request_spec)
 
         migration = objects.Migration(context=context.elevated())
         migration.dest_compute = destination
