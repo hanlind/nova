@@ -1420,6 +1420,8 @@ class API(base.Base):
         instance.flavor = instance_type
         instance.old_flavor = None
         instance.new_flavor = None
+        instance.vcpu_model = None
+        instance.pci_devices = objects.PciDeviceList()
         if CONF.ephemeral_storage_encryption.enabled:
             instance.ephemeral_key_uuid = self.key_manager.create_key(
                 context,
@@ -1467,6 +1469,10 @@ class API(base.Base):
 
         self.security_group_api.ensure_default(context)
         instance.create()
+
+        # NOTE(hanlind): This is to avoid a lazy-load from later happening in
+        # compute manager.
+        instance.ec2_ids
 
         if num_instances > 1:
             # NOTE(russellb) We wait until this spot to handle

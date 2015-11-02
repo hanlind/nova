@@ -399,6 +399,7 @@ class Instance(base.NovaPersistentObject, base.NovaObject,
             updates['info_cache'] = {
                 'network_info': updates['info_cache'].network_info.json()
                 }
+        updates.pop('pci_devices', None)
         updates['extra'] = {}
         numa_topology = updates.pop('numa_topology', None)
         if numa_topology:

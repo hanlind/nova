@@ -94,6 +94,9 @@ class CellsScheduler(base.Base):
         instance_values.pop('info_cache')
         instance_values.pop('security_groups')
         instance_values.pop('flavor')
+        instance_values.pop('ec2_ids', None)
+        instance_values.pop('pci_devices', None)
+        instance_values.pop('vcpu_model', None)
 
         # FIXME(danms): The instance was brutally serialized before being
         # sent over RPC to us. Thus, the pci_requests value wasn't really

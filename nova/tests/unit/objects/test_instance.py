@@ -859,6 +859,23 @@ class _TestInstanceObject(object):
         inst.create()
         self.assertEqual('foo-host', inst.host)
 
+    @mock.patch.object(db, 'instance_create')
+    def test_create_skip_pci_devices(self, mock_create):
+        vals = {'host': 'foo-host',
+                'memory_mb': 128,
+                'system_metadata': {'foo': 'bar'},
+                'extra': {}}
+        fake_inst = fake_instance.fake_db_instance(**vals)
+        mock_create.return_value = fake_inst
+
+        inst = objects.Instance(context=self.context,
+                                host='foo-host', memory_mb=128,
+                                pci_devices=objects.PciDeviceList(),
+                                system_metadata={'foo': 'bar'})
+        inst.create()
+
+        mock_create.assert_called_once_with(self.context, vals)
+
     def test_metadata_change_tracking(self):
         self._test_metadata_change_tracking('metadata')
 

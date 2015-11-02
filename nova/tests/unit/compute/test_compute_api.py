@@ -2683,12 +2683,14 @@ class _ComputeAPIUnitTestMixIn(object):
     def _test_create_db_entry_for_new_instance_with_cinder_error(self,
                                                         expected_exception):
 
+        @mock.patch.object(objects.EC2Ids, 'get_by_instance')
         @mock.patch.object(objects.Instance, 'create')
         @mock.patch.object(compute_api.SecurityGroupAPI, 'ensure_default')
         @mock.patch.object(compute_api.API, '_populate_instance_names')
         @mock.patch.object(compute_api.API, '_populate_instance_for_create')
         def do_test(self, mock_create, mock_names, mock_ensure,
-                    mock_inst_create):
+                    mock_inst_create, mock_ec2ids):
+            mock_ec2ids.return_value = objects.EC2Ids()
             instance = self._create_instance_obj()
             instance['display_name'] = 'FAKE_DISPLAY_NAME'
             instance['shutdown_terminate'] = False
