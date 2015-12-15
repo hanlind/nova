@@ -30,6 +30,8 @@ def register_all():
     __import__('nova.objects.block_device')
     __import__('nova.objects.cell_mapping')
     __import__('nova.objects.compute_node')
+    __import__('nova.objects.console')
+    __import__('nova.objects.console_pool')
     __import__('nova.objects.dns_domain')
     __import__('nova.objects.ec2')
     __import__('nova.objects.external_event')
