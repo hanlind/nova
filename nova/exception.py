@@ -1151,11 +1151,6 @@ class ConsoleNotFoundForInstance(ConsoleNotFound):
     msg_fmt = _("Console for instance %(instance_uuid)s could not be found.")
 
 
-class ConsoleNotFoundInPoolForInstance(ConsoleNotFound):
-    msg_fmt = _("Console for instance %(instance_uuid)s "
-                "in pool %(pool_id)s could not be found.")
-
-
 class ConsoleTypeInvalid(Invalid):
     msg_fmt = _("Invalid console type %(console_type)s")
 

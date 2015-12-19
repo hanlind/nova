@@ -26,6 +26,7 @@ from nova.api.openstack.compute.legacy_v2 import consoles as consoles_v2
 from nova.compute import vm_states
 from nova import console
 from nova import exception
+from nova import objects
 from nova import policy
 from nova import test
 from nova.tests.unit.api.openstack import fakes
@@ -160,13 +161,14 @@ class ConsolesControllerTestV21(test.NoDBTestCase):
         def fake_get_console(cons_self, context, instance_id, console_id):
             self.assertEqual(instance_id, self.uuid)
             self.assertEqual(console_id, 20)
-            pool = dict(console_type='fake_type',
-                    public_hostname='fake_hostname')
-            return dict(id=console_id, password='fake_password',
-                    port='fake_port', pool=pool, instance_name='inst-0001')
+            pool = objects.ConsolePool(console_type='fake_type',
+                                       public_hostname='fake_hostname')
+            return objects.Console(id=console_id, password='fake_password',
+                                   port=888, pool=pool,
+                                   instance_name='inst-0001')
 
         expected = {'console': {'id': 20,
-                                'port': 'fake_port',
+                                'port': 888,
                                 'host': 'fake_hostname',
                                 'password': 'fake_password',
                                 'instance_name': 'inst-0001',
@@ -203,15 +205,15 @@ class ConsolesControllerTestV21(test.NoDBTestCase):
         def fake_get_consoles(cons_self, context, instance_id):
             self.assertEqual(instance_id, self.uuid)
 
-            pool1 = dict(console_type='fake_type',
-                    public_hostname='fake_hostname')
-            cons1 = dict(id=10, password='fake_password',
-                    port='fake_port', pool=pool1)
-            pool2 = dict(console_type='fake_type2',
-                    public_hostname='fake_hostname2')
-            cons2 = dict(id=11, password='fake_password2',
-                    port='fake_port2', pool=pool2)
-            return [cons1, cons2]
+            pool1 = objects.ConsolePool(console_type='fake_type',
+                                        public_hostname='fake_hostname')
+            cons1 = objects.Console(id=10, password='fake_password',
+                                    port=888, pool=pool1)
+            pool2 = objects.ConsolePool(console_type='fake_type2',
+                                        public_hostname='fake_hostname2')
+            cons2 = objects.Console(id=11, password='fake_password2',
+                                    port=889, pool=pool2)
+            return objects.ConsoleList(objects=[cons1, cons2])
 
         expected = {'consoles':
                 [{'console': {'id': 10, 'console_type': 'fake_type'}},

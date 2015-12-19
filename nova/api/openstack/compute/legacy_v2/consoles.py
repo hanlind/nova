@@ -23,9 +23,9 @@ from nova import exception
 
 def _translate_keys(cons):
     """Coerces a console instance into proper dictionary format."""
-    pool = cons['pool']
-    info = {'id': cons['id'],
-            'console_type': pool['console_type']}
+    pool = cons.pool
+    info = {'id': cons.id,
+            'console_type': pool.console_type}
     return dict(console=info)
 
 
@@ -33,13 +33,13 @@ def _translate_detail_keys(cons):
     """Coerces a console instance into proper dictionary format with
     correctly mapped attributes.
     """
-    pool = cons['pool']
-    info = {'id': cons['id'],
-            'console_type': pool['console_type'],
-            'password': cons['password'],
-            'instance_name': cons['instance_name'],
-            'port': cons['port'],
-            'host': pool['public_hostname']}
+    pool = cons.pool
+    info = {'id': cons.id,
+            'console_type': pool.console_type,
+            'password': cons.password,
+            'instance_name': cons.instance_name,
+            'port': cons.port,
+            'host': pool.public_hostname}
     return dict(console=info)
 
 

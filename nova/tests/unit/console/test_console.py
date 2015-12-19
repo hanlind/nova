@@ -62,12 +62,13 @@ class ConsoleTestCase(test.TestCase):
         inst['project_id'] = self.project_id
         inst['instance_type_id'] = 1
         inst['ami_launch_index'] = 0
+        inst['host'] = self.host
         return db.instance_create(self.context, inst)
 
     def test_get_pool_for_instance_host(self):
         pool = self.console._get_pool_for_instance_host(self.context,
                 self.host)
-        self.assertEqual(pool['compute_host'], self.host)
+        self.assertEqual(pool.compute_host, self.host)
 
     def test_get_pool_creates_new_pool_if_needed(self):
         self.assertRaises(exception.NotFound,
@@ -82,19 +83,20 @@ class ConsoleTestCase(test.TestCase):
                               self.host,
                               self.console.host,
                               self.console.driver.console_type)
-        self.assertEqual(pool['id'], pool2['id'])
+        self.assertEqual(pool.id, pool2['id'])
 
     def test_get_pool_does_not_create_new_pool_if_exists(self):
         pool_info = {'address': '127.0.0.1',
                      'username': 'test',
                      'password': '1234pass',
                      'host': self.console.host,
+                     'public_hostname': 'public-hostname',
                      'console_type': self.console.driver.console_type,
                      'compute_host': 'sometesthostname'}
         new_pool = db.console_pool_create(self.context, pool_info)
         pool = self.console._get_pool_for_instance_host(self.context,
                                                        'sometesthostname')
-        self.assertEqual(pool['id'], new_pool['id'])
+        self.assertEqual(pool.id, new_pool['id'])
 
     def test_add_console(self):
         instance = self._create_instance()
@@ -140,35 +142,41 @@ class ConsoleAPITestCase(test.TestCase):
             'uuid': self.fake_uuid,
             'host': 'fake_host'
         }
-        self.fake_console = {
-            'pool': {'host': 'fake_host'},
-            'id': 'fake_id'
-        }
 
-        def _fake_db_console_get(_ctxt, _console_uuid, _instance_uuid):
-            return self.fake_console
-        self.stub_out('nova.db.console_get', _fake_db_console_get)
+    @mock.patch('nova.objects.ConsoleList.get_by_instance',
+                return_value=mock.sentinel.consoles)
+    def test_get_consoles(self, mock_get):
+        console = self.console_api.get_consoles(mock.sentinel.ctxt,
+                                                mock.sentinel.uuid)
+        mock_get.assert_called_once_with(
+            mock.sentinel.ctxt, mock.sentinel.uuid, expected_attrs=['pool'])
+        self.assertEqual(console, mock.sentinel.consoles)
 
-        def _fake_db_console_get_all_by_instance(_ctxt, _instance_uuid,
-                                                 columns_to_join):
-            return [self.fake_console]
-        self.stub_out('nova.db.console_get_all_by_instance',
-                       _fake_db_console_get_all_by_instance)
+    @mock.patch('nova.objects.Console.get', return_value=mock.sentinel.console)
+    def test_get_console(self, mock_get):
+        console = self.console_api.get_console(
+            mock.sentinel.ctxt, mock.sentinel.uuid, mock.sentinel.id)
+        mock_get.assert_called_once_with(mock.sentinel.ctxt, mock.sentinel.id,
+                                         instance_uuid=mock.sentinel.uuid)
+        self.assertEqual(console, mock.sentinel.console)
 
-    def test_get_consoles(self):
-        console = self.console_api.get_consoles(self.context, self.fake_uuid)
-        self.assertEqual(console, [self.fake_console])
+    @mock.patch('nova.console.rpcapi.ConsoleAPI')
+    @mock.patch('nova.objects.Console.get')
+    def test_delete_console(self, mock_get, mock_rpc):
+        self.flags(console_topic=mock.sentinel.topic)
+        mock_pool = mock.Mock(host=mock.sentinel.host)
+        mock_console = mock.Mock(id=mock.sentinel.console_id, pool=mock_pool)
+        mock_get.return_value = mock_console
 
-    def test_get_console(self):
-        console = self.console_api.get_console(self.context, self.fake_uuid,
-                                               'fake_id')
-        self.assertEqual(console, self.fake_console)
+        self.console_api.delete_console(mock.sentinel.ctxt, mock.sentinel.uuid,
+                                        mock.sentinel.id)
 
-    @mock.patch('nova.console.rpcapi.ConsoleAPI.remove_console')
-    def test_delete_console(self, mock_remove):
-        self.console_api.delete_console(self.context, self.fake_uuid,
-                                        'fake_id')
-        mock_remove.assert_called_once_with(self.context, 'fake_id')
+        mock_get.assert_called_once_with(mock.sentinel.ctxt, mock.sentinel.id,
+                                         instance_uuid=mock.sentinel.uuid)
+        mock_rpc.assert_called_once_with(topic=mock.sentinel.topic,
+                                         server=mock.sentinel.host)
+        mock_rpc.return_value.remove_console.assert_called_once_with(
+            mock.sentinel.ctxt, mock.sentinel.console_id)
 
     @mock.patch.object(compute_rpcapi.ComputeAPI, 'get_console_topic',
                        return_value='compute.fake_host')

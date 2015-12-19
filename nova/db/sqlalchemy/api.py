@@ -4611,21 +4611,6 @@ def console_delete(context, console_id):
 
 
 @main_context_manager.reader
-def console_get_by_pool_instance(context, pool_id, instance_uuid):
-    result = model_query(context, models.Console, read_deleted="yes").\
-                   filter_by(pool_id=pool_id).\
-                   filter_by(instance_uuid=instance_uuid).\
-                   options(joinedload('pool')).\
-                   first()
-
-    if not result:
-        raise exception.ConsoleNotFoundInPoolForInstance(
-                pool_id=pool_id, instance_uuid=instance_uuid)
-
-    return result
-
-
-@main_context_manager.reader
 def console_get_all_by_instance(context, instance_uuid, columns_to_join=None):
     query = model_query(context, models.Console, read_deleted="yes").\
                 filter_by(instance_uuid=instance_uuid)

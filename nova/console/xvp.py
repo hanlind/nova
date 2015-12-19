@@ -25,8 +25,9 @@ from oslo_log import log as logging
 from oslo_utils import excutils
 
 from nova import context
-from nova import db
 from nova.i18n import _, _LE
+from nova import objects
+from nova.objects import base as obj_base
 from nova import paths
 from nova import utils
 
@@ -99,9 +100,9 @@ class XVPConsoleProxy(object):
 
     def _rebuild_xvp_conf(self, context):
         LOG.debug('Rebuilding xvp conf')
-        pools = [pool for pool in
-                 db.console_pool_get_all_by_host_type(context, self.host,
-                                                       self.console_type)
+        pools = objects.ConsolePoolList.get_by_host_type(context, self.host,
+                                                         self.console_type)
+        pools = [pool for pool in obj_base.obj_to_primitive(pools)
                   if pool['consoles']]
         if not pools:
             LOG.debug('No console pools!')

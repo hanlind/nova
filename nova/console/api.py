@@ -19,31 +19,29 @@ from oslo_config import cfg
 
 from nova.compute import rpcapi as compute_rpcapi
 from nova.console import rpcapi as console_rpcapi
-from nova.db import base
 from nova import objects
 
 CONF = cfg.CONF
 CONF.import_opt('console_topic', 'nova.console.rpcapi')
 
 
-class API(base.Base):
+class API(object):
     """API for spinning up or down console proxy connections."""
 
-    def __init__(self, **kwargs):
-        super(API, self).__init__(**kwargs)
-
     def get_consoles(self, context, instance_uuid):
-        return self.db.console_get_all_by_instance(context, instance_uuid,
-                                                   columns_to_join=['pool'])
+        return objects.ConsoleList.get_by_instance(context, instance_uuid,
+                                                   expected_attrs=['pool'])
 
-    def get_console(self, context, instance_uuid, console_uuid):
-        return self.db.console_get(context, console_uuid, instance_uuid)
+    def get_console(self, context, instance_uuid, console_id):
+        return objects.Console.get(context, console_id,
+                                   instance_uuid=instance_uuid)
 
-    def delete_console(self, context, instance_uuid, console_uuid):
-        console = self.db.console_get(context, console_uuid, instance_uuid)
+    def delete_console(self, context, instance_uuid, console_id):
+        console = objects.Console.get(context, console_id,
+                                      instance_uuid=instance_uuid)
         rpcapi = console_rpcapi.ConsoleAPI(topic=CONF.console_topic,
-                                           server=console['pool']['host'])
-        rpcapi.remove_console(context, console['id'])
+                                           server=console.pool.host)
+        rpcapi.remove_console(context, console.id)
 
     def create_console(self, context, instance_uuid):
         # NOTE(mdragon): If we wanted to return this the console info

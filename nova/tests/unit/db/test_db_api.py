@@ -7786,13 +7786,6 @@ class ConsoleTestCase(test.TestCase, ModelsObjectComparatorMixin):
         self._assertEqualObjects(console, console_get,
                                  ignored_keys=['pool'])
 
-    def test_console_get_by_pool_instance(self):
-        console = self.consoles[0]
-        console_get = db.console_get_by_pool_instance(self.ctxt,
-                            console['pool_id'], console['instance_uuid'])
-        self._assertEqualObjects(console, console_get,
-                                 ignored_keys=['pool'])
-
     def test_console_get_all_by_instance(self):
         instance_uuid = self.consoles[0]['instance_uuid']
         consoles_get = db.console_get_all_by_instance(self.ctxt, instance_uuid)
@@ -7817,12 +7810,6 @@ class ConsoleTestCase(test.TestCase, ModelsObjectComparatorMixin):
         db.console_delete(self.ctxt, console_id)
         self.assertRaises(exception.ConsoleNotFound, db.console_get,
                           self.ctxt, console_id)
-
-    def test_console_get_by_pool_instance_not_found(self):
-        self.assertRaises(exception.ConsoleNotFoundInPoolForInstance,
-                          db.console_get_by_pool_instance, self.ctxt,
-                          self.consoles[0]['pool_id'],
-                          uuidutils.generate_uuid())
 
     def test_console_get_not_found(self):
         self.assertRaises(exception.ConsoleNotFound, db.console_get,

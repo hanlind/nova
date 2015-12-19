@@ -26,6 +26,7 @@ from nova.compute import rpcapi as compute_rpcapi
 from nova import exception
 from nova.i18n import _LI
 from nova import manager
+from nova import objects
 from nova import utils
 
 
@@ -74,47 +75,42 @@ class ConsoleProxyManager(manager.Manager):
 
     def add_console(self, context, instance_id):
         instance = self.db.instance_get(context, instance_id)
-        host = instance['host']
-        name = instance['name']
-        pool = self._get_pool_for_instance_host(context, host)
-        try:
-            console = self.db.console_get_by_pool_instance(context,
-                                                           pool['id'],
-                                                           instance['uuid'])
-        except exception.NotFound:
-            LOG.debug('Adding console', instance=instance)
-            password = utils.generate_password(8)
-            port = self.driver.get_port(context)
-            console_data = {'instance_name': name,
-                            'instance_uuid': instance['uuid'],
-                            'password': password,
-                            'pool_id': pool['id']}
-            if port:
-                console_data['port'] = port
-            console = self.db.console_create(context, console_data)
-            self.driver.setup_console(context, console)
+        pool = self._get_pool_for_instance_host(context, instance['host'])
+        for console in pool.consoles:
+            if console.instance_uuid == instance['uuid']:
+                return console.id
 
-        return console['id']
+        LOG.debug('Adding console', instance=instance)
+        console = objects.Console(context=context)
+        console.password = utils.generate_password(8)
+        console.port = self.driver.get_port(context)
+        console.instance_name = instance['name']
+        console.instance_uuid = instance['uuid']
+        console.pool = pool
+        console.create()
+        self.driver.setup_console(context, console)
+
+        return console.id
 
     def remove_console(self, context, console_id):
         try:
-            console = self.db.console_get(context, console_id)
+            console = objects.Console.get(context, console_id)
         except exception.NotFound:
             LOG.debug('Tried to remove non-existent console '
                       '%(console_id)s.',
                       {'console_id': console_id})
             return
-        self.db.console_delete(context, console_id)
+        console.destroy()
         self.driver.teardown_console(context, console)
 
     def _get_pool_for_instance_host(self, context, instance_host):
         context = context.elevated()
         console_type = self.driver.console_type
         try:
-            pool = self.db.console_pool_get_by_host_type(context,
-                                                         instance_host,
-                                                         self.host,
-                                                         console_type)
+            pool = objects.ConsolePool.get_by_host_type(context,
+                                                        instance_host,
+                                                        self.host,
+                                                        console_type)
         except exception.NotFound:
             # NOTE(mdragon): Right now, the only place this info exists is the
             #                compute worker's flagfile, at least for
@@ -132,5 +128,8 @@ class ConsoleProxyManager(manager.Manager):
             pool_info['public_hostname'] = CONF.console_public_hostname
             pool_info['console_type'] = self.driver.console_type
             pool_info['compute_host'] = instance_host
-            pool = self.db.console_pool_create(context, pool_info)
+            pool = objects.ConsolePool(context=context)
+            for key, val in pool_info.items():
+                setattr(pool, key, val)
+            pool.create()
         return pool
