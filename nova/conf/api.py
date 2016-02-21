@@ -36,31 +36,6 @@ You should only enable this if you have an HTML sanitizing proxy.
 ]
 
 metadata_opts = [
-    cfg.StrOpt("config_drive_skip_versions",
-            default=("1.0 2007-01-19 2007-03-01 2007-08-29 2007-10-10 "
-                     "2007-12-15 2008-02-01 2008-09-01"),
-            help="""
-When gathering the existing metadata for a config drive, the EC2-style
-metadata is returned for all versions that don't appear in this option.
-As of the Liberty release, the available versions are:
-
-* 1.0
-* 2007-01-19
-* 2007-03-01
-* 2007-08-29
-* 2007-10-10
-* 2007-12-15
-* 2008-02-01
-* 2008-09-01
-* 2009-04-04
-
-The option is in the format of a single string, with each version separated
-by a space.
-
-Possible values:
-
-* Any string that represents zero or more versions, separated by spaces.
-"""),
     cfg.StrOpt("vendordata_driver",
             default="nova.api.metadata.vendordata_json.JsonFileVendorData",
             deprecated_for_removal=True,

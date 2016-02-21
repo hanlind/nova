@@ -21,7 +21,6 @@ import copy
 import hashlib
 import hmac
 import os
-import re
 import requests
 
 try:
@@ -40,19 +39,16 @@ from nova.api.metadata import handler
 from nova.api.metadata import password
 from nova.api.metadata import vendordata
 from nova.api.metadata import vendordata_dynamic
-from nova import block_device
 from nova.compute import flavors
 from nova import context
 from nova import exception
 from nova.network import api as network_api
 from nova.network import model as network_model
 from nova.network.neutronv2 import api as neutronapi
-from nova.network.security_group import openstack_driver
 from nova import objects
 from nova.objects import virt_device_metadata as metadata_obj
 from nova import test
 from nova.tests.unit.api.openstack import fakes
-from nova.tests.unit import fake_block_device
 from nova.tests.unit import fake_network
 from nova.tests import uuidsentinel as uuids
 from nova import utils
@@ -114,22 +110,12 @@ def return_non_existing_address(*args, **kwarg):
     raise exception.NotFound()
 
 
-def fake_InstanceMetadata(testcase, inst_data, address=None,
-                          sgroups=None, content=None, extra_md=None,
+def fake_InstanceMetadata(inst_data, address=None,
+                          content=None, extra_md=None,
                           vd_driver=None, network_info=None,
                           network_metadata=None):
     content = content or []
     extra_md = extra_md or {}
-    if sgroups is None:
-        sgroups = [{'name': 'default'}]
-
-    def sg_get(*args, **kwargs):
-        return sgroups
-
-    secgroup_api = openstack_driver.get_openstack_security_group_driver()
-    testcase.stub_out('%(module)s.%(class)s.get_instance_security_groups' %
-                      {'module': secgroup_api.__module__,
-                       'class': secgroup_api.__class__.__name__}, sg_get)
     return base.InstanceMetadata(inst_data, address=address,
         content=content, extra_md=extra_md,
         vd_driver=vd_driver, network_info=network_info,
@@ -258,148 +244,19 @@ class MetadataTestCase(test.TestCase):
     def test_can_pickle_metadata(self):
         # Make sure that InstanceMetadata is possible to pickle. This is
         # required for memcache backend to work correctly.
-        md = fake_InstanceMetadata(self, self.instance.obj_clone())
+        md = fake_InstanceMetadata(self.instance.obj_clone())
         pickle.dumps(md, protocol=0)
-
-    def test_user_data(self):
-        inst = self.instance.obj_clone()
-        inst['user_data'] = base64.b64encode("happy")
-        md = fake_InstanceMetadata(self, inst)
-        self.assertEqual(
-            md.get_ec2_metadata(version='2009-04-04')['user-data'], "happy")
-
-    def test_no_user_data(self):
-        inst = self.instance.obj_clone()
-        inst.user_data = None
-        md = fake_InstanceMetadata(self, inst)
-        obj = object()
-        self.assertEqual(
-            md.get_ec2_metadata(version='2009-04-04').get('user-data', obj),
-            obj)
-
-    def _test_security_groups(self):
-        inst = self.instance.obj_clone()
-        sgroups = [{'name': name} for name in ('default', 'other')]
-        expected = ['default', 'other']
-
-        md = fake_InstanceMetadata(self, inst, sgroups=sgroups)
-        data = md.get_ec2_metadata(version='2009-04-04')
-        self.assertEqual(data['meta-data']['security-groups'], expected)
-
-    def test_security_groups(self):
-        self._test_security_groups()
-
-    def test_neutron_security_groups(self):
-        self.flags(use_neutron=True)
-        self._test_security_groups()
-
-    def test_local_hostname_fqdn(self):
-        md = fake_InstanceMetadata(self, self.instance.obj_clone())
-        data = md.get_ec2_metadata(version='2009-04-04')
-        self.assertEqual(data['meta-data']['local-hostname'],
-            "%s.%s" % (self.instance['hostname'], CONF.dhcp_domain))
-
-    def test_format_instance_mapping(self):
-        # Make sure that _format_instance_mappings works.
-        instance_ref0 = objects.Instance(**{'id': 0,
-                         'uuid': 'e5fe5518-0288-4fa3-b0c4-c79764101b85',
-                         'root_device_name': None,
-                         'default_ephemeral_device': None,
-                         'default_swap_device': None})
-        instance_ref1 = objects.Instance(**{'id': 0,
-                         'uuid': 'b65cee2f-8c69-4aeb-be2f-f79742548fc2',
-                         'root_device_name': '/dev/sda1',
-                         'default_ephemeral_device': None,
-                         'default_swap_device': None})
-
-        def fake_bdm_get(ctxt, uuid):
-            return [fake_block_device.FakeDbBlockDeviceDict(
-                    {'volume_id': 87654321,
-                     'snapshot_id': None,
-                     'no_device': None,
-                     'source_type': 'volume',
-                     'destination_type': 'volume',
-                     'delete_on_termination': True,
-                     'device_name': '/dev/sdh'}),
-                    fake_block_device.FakeDbBlockDeviceDict(
-                    {'volume_id': None,
-                     'snapshot_id': None,
-                     'no_device': None,
-                     'source_type': 'blank',
-                     'destination_type': 'local',
-                     'guest_format': 'swap',
-                     'delete_on_termination': None,
-                     'device_name': '/dev/sdc'}),
-                    fake_block_device.FakeDbBlockDeviceDict(
-                    {'volume_id': None,
-                     'snapshot_id': None,
-                     'no_device': None,
-                     'source_type': 'blank',
-                     'destination_type': 'local',
-                     'guest_format': None,
-                     'delete_on_termination': None,
-                     'device_name': '/dev/sdb'})]
-
-        self.stub_out('nova.db.block_device_mapping_get_all_by_instance',
-                      fake_bdm_get)
-
-        expected = {'ami': 'sda1',
-                    'root': '/dev/sda1',
-                    'ephemeral0': '/dev/sdb',
-                    'swap': '/dev/sdc',
-                    'ebs0': '/dev/sdh'}
-
-        self.assertEqual(base._format_instance_mapping(self.context,
-                         instance_ref0), block_device._DEFAULT_MAPPINGS)
-        self.assertEqual(base._format_instance_mapping(self.context,
-                         instance_ref1), expected)
-
-    def test_pubkey(self):
-        md = fake_InstanceMetadata(self, self.instance.obj_clone())
-        pubkey_ent = md.lookup("/2009-04-04/meta-data/public-keys")
-
-        self.assertEqual(base.ec2_md_print(pubkey_ent),
-            "0=%s" % self.instance['key_name'])
-        self.assertEqual(base.ec2_md_print(pubkey_ent['0']['openssh-key']),
-            self.instance['key_data'])
-
-    def test_image_type_ramdisk(self):
-        inst = self.instance.obj_clone()
-        inst['ramdisk_id'] = uuids.ramdisk_id
-        md = fake_InstanceMetadata(self, inst)
-        data = md.lookup("/latest/meta-data/ramdisk-id")
-
-        self.assertIsNotNone(data)
-        self.assertTrue(re.match('ari-[0-9a-f]{8}', data))
-
-    def test_image_type_kernel(self):
-        inst = self.instance.obj_clone()
-        inst['kernel_id'] = uuids.kernel_id
-        md = fake_InstanceMetadata(self, inst)
-        data = md.lookup("/2009-04-04/meta-data/kernel-id")
-
-        self.assertTrue(re.match('aki-[0-9a-f]{8}', data))
-
-        self.assertEqual(
-            md.lookup("/ec2/2009-04-04/meta-data/kernel-id"), data)
-
-    def test_image_type_no_kernel_raises(self):
-        inst = self.instance.obj_clone()
-        md = fake_InstanceMetadata(self, inst)
-        self.assertRaises(base.InvalidMetadataPath,
-            md.lookup, "/2009-04-04/meta-data/kernel-id")
 
     def test_check_version(self):
         inst = self.instance.obj_clone()
-        md = fake_InstanceMetadata(self, inst)
+        md = fake_InstanceMetadata(inst)
 
-        self.assertTrue(md._check_version('1.0', '2009-04-04'))
-        self.assertFalse(md._check_version('2009-04-04', '1.0'))
-
-        self.assertFalse(md._check_version('2009-04-04', '2008-09-01'))
-        self.assertTrue(md._check_version('2008-09-01', '2009-04-04'))
-
-        self.assertTrue(md._check_version('2009-04-04', '2009-04-04'))
+        self.assertTrue(md._check_version(base.HAVANA, base.LIBERTY,
+                                          base.OPENSTACK_VERSIONS))
+        self.assertFalse(md._check_version(base.LIBERTY, base.HAVANA,
+                                           base.OPENSTACK_VERSIONS))
+        self.assertTrue(md._check_version(base.LIBERTY, base.LIBERTY,
+                                          base.OPENSTACK_VERSIONS))
 
     @mock.patch('nova.virt.netutils.get_injected_network_template')
     def test_InstanceMetadata_uses_passed_network_info(self, mock_get):
@@ -423,10 +280,6 @@ class MetadataTestCase(test.TestCase):
         inst = self.instance.obj_clone()
         inst_md = base.InstanceMetadata(inst)
         expected_paths = [
-            'ec2/2009-04-04/user-data',
-            'ec2/2009-04-04/meta-data.json',
-            'ec2/latest/user-data',
-            'ec2/latest/meta-data.json',
             'openstack/2012-08-10/meta_data.json',
             'openstack/2012-08-10/user_data',
             'openstack/2013-04-04/meta_data.json',
@@ -467,31 +320,6 @@ class MetadataTestCase(test.TestCase):
         base.InstanceMetadata(fake_inst_obj(self.context))
         mock_get.assert_called_once_with(network_info_from_api)
 
-    def test_local_ipv4(self):
-        nw_info = fake_network.fake_get_instance_nw_info(self,
-                                                          num_networks=2)
-        expected_local = "192.168.1.100"
-        md = fake_InstanceMetadata(self, self.instance,
-                                   network_info=nw_info, address="fake")
-        data = md.get_ec2_metadata(version='2009-04-04')
-        self.assertEqual(expected_local, data['meta-data']['local-ipv4'])
-
-    def test_local_ipv4_from_nw_info(self):
-        nw_info = fake_network.fake_get_instance_nw_info(self,
-                                                         num_networks=2)
-        expected_local = "192.168.1.100"
-        md = fake_InstanceMetadata(self, self.instance,
-                                   network_info=nw_info)
-        data = md.get_ec2_metadata(version='2009-04-04')
-        self.assertEqual(data['meta-data']['local-ipv4'], expected_local)
-
-    def test_local_ipv4_from_address(self):
-        expected_local = "fake"
-        md = fake_InstanceMetadata(self, self.instance,
-                                   network_info=[], address="fake")
-        data = md.get_ec2_metadata(version='2009-04-04')
-        self.assertEqual(data['meta-data']['local-ipv4'], expected_local)
-
     @mock.patch.object(base64, 'b64encode', lambda data: FAKE_SEED)
     @mock.patch('nova.cells.rpcapi.CellsAPI.get_keypair_at_top')
     @mock.patch.object(jsonutils, 'dump_as_bytes')
@@ -504,7 +332,7 @@ class MetadataTestCase(test.TestCase):
 
         instance = self.instance
         keypair = self.keypair
-        md = fake_InstanceMetadata(self, instance)
+        md = fake_InstanceMetadata(instance)
 
         expected_metadata = {
             'uuid': md.uuid,
@@ -565,7 +393,7 @@ class MetadataTestCase(test.TestCase):
         # to be lazy-loaded from the database
         delattr(instance, 'keypairs')
         mock_inst_get_by_uuid.return_value = instance
-        md = fake_InstanceMetadata(self, instance)
+        md = fake_InstanceMetadata(instance)
         meta = md._metadata_as_json(base.OPENSTACK_VERSIONS[-1], path=None)
         meta = jsonutils.loads(meta)
         self.assertNotIn('keys', meta)
@@ -583,7 +411,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         fakes.stub_out_key_pair_funcs(self)
         inst = self.instance.obj_clone()
         inst.device_metadata = None
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
         mdjson = mdinst.lookup("/openstack/latest/meta_data.json")
         mddict = jsonutils.loads(mdjson)
         self.assertEqual([], mddict['devices'])
@@ -595,7 +423,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         # ignored
         fakes.stub_out_key_pair_funcs(self)
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
         mdjson = mdinst.lookup("/openstack/latest/meta_data.json")
         mddict = jsonutils.loads(mdjson)
         self.assertEqual(fake_metadata_dicts(), mddict['devices'])
@@ -603,7 +431,7 @@ class OpenStackMetadataTestCase(test.TestCase):
     def test_top_level_listing(self):
         # request for /openstack/<version>/ should show metadata.json
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         result = mdinst.lookup("/openstack")
 
@@ -618,13 +446,13 @@ class OpenStackMetadataTestCase(test.TestCase):
     def test_version_content_listing(self):
         # request for /openstack/<version>/ should show metadata.json
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         listing = mdinst.lookup("/openstack/2012-08-10")
         self.assertIn("meta_data.json", listing)
 
     def test_returns_apis_supported_in_liberty_version(self):
-        mdinst = fake_InstanceMetadata(self, self.instance)
+        mdinst = fake_InstanceMetadata(self.instance)
         liberty_supported_apis = mdinst.lookup("/openstack/2015-10-15")
 
         self.assertEqual([base.MD_JSON_NAME, base.UD_NAME, base.PASS_NAME,
@@ -632,21 +460,21 @@ class OpenStackMetadataTestCase(test.TestCase):
                          liberty_supported_apis)
 
     def test_returns_apis_supported_in_havana_version(self):
-        mdinst = fake_InstanceMetadata(self, self.instance)
+        mdinst = fake_InstanceMetadata(self.instance)
         havana_supported_apis = mdinst.lookup("/openstack/2013-10-17")
 
         self.assertEqual([base.MD_JSON_NAME, base.UD_NAME, base.PASS_NAME,
                           base.VD_JSON_NAME], havana_supported_apis)
 
     def test_returns_apis_supported_in_folsom_version(self):
-        mdinst = fake_InstanceMetadata(self, self.instance)
+        mdinst = fake_InstanceMetadata(self.instance)
         folsom_supported_apis = mdinst.lookup("/openstack/2012-08-10")
 
         self.assertEqual([base.MD_JSON_NAME, base.UD_NAME],
                          folsom_supported_apis)
 
     def test_returns_apis_supported_in_grizzly_version(self):
-        mdinst = fake_InstanceMetadata(self, self.instance)
+        mdinst = fake_InstanceMetadata(self.instance)
         grizzly_supported_apis = mdinst.lookup("/openstack/2013-04-04")
 
         self.assertEqual([base.MD_JSON_NAME, base.UD_NAME, base.PASS_NAME],
@@ -660,8 +488,7 @@ class OpenStackMetadataTestCase(test.TestCase):
             ('/root/hello', "content of /root/hello"),
         ]
 
-        mdinst = fake_InstanceMetadata(self, inst,
-            content=content)
+        mdinst = fake_InstanceMetadata(inst, content=content)
         mdjson = mdinst.lookup("/openstack/2012-08-10/meta_data.json")
         mdjson = mdinst.lookup("/openstack/latest/meta_data.json")
 
@@ -695,7 +522,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         inst.keypairs[0].name = expected['name']
         inst.keypairs[0].type = expected['type']
         inst.keypairs[0].public_key = expected['data']
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         mdjson = mdinst.lookup("/openstack/2012-08-10/meta_data.json")
         mddict = jsonutils.loads(mdjson)
@@ -708,7 +535,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         inst = self.instance.obj_clone()
         extra = {'foo': 'bar', 'mylist': [1, 2, 3],
                  'mydict': {"one": 1, "two": 2}}
-        mdinst = fake_InstanceMetadata(self, inst, extra_md=extra)
+        mdinst = fake_InstanceMetadata(inst, extra_md=extra)
 
         mdjson = mdinst.lookup("/openstack/2012-08-10/meta_data.json")
         mddict = jsonutils.loads(mdjson)
@@ -719,14 +546,14 @@ class OpenStackMetadataTestCase(test.TestCase):
     def test_password(self):
         # make sure extra_md makes it through to metadata
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         result = mdinst.lookup("/openstack/latest/password")
         self.assertEqual(result, password.handle_password)
 
     def test_userdata(self):
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         userdata_found = mdinst.lookup("/openstack/2012-08-10/user_data")
         self.assertEqual(USER_DATA_STRING, userdata_found)
@@ -735,7 +562,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         self.assertIn('user_data', mdinst.lookup("/openstack/2012-08-10"))
 
         inst.user_data = None
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         # since this instance had no user-data it should not be there.
         self.assertNotIn('user_data', mdinst.lookup("/openstack/2012-08-10"))
@@ -746,7 +573,7 @@ class OpenStackMetadataTestCase(test.TestCase):
     def test_random_seed(self):
         fakes.stub_out_key_pair_funcs(self)
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         # verify that 2013-04-04 has the 'random' field
         mdjson = mdinst.lookup("/openstack/2013-04-04/meta_data.json")
@@ -761,7 +588,7 @@ class OpenStackMetadataTestCase(test.TestCase):
 
     def test_project_id(self):
         fakes.stub_out_key_pair_funcs(self)
-        mdinst = fake_InstanceMetadata(self, self.instance)
+        mdinst = fake_InstanceMetadata(self.instance)
 
         # verify that 2015-10-15 has the 'project_id' field
         mdjson = mdinst.lookup("/openstack/2015-10-15/meta_data.json")
@@ -778,7 +605,7 @@ class OpenStackMetadataTestCase(test.TestCase):
         # top level entries in meta_data should not contain '-' in their name
         fakes.stub_out_key_pair_funcs(self)
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
         mdjson = jsonutils.loads(
             mdinst.lookup("/openstack/latest/meta_data.json"))
 
@@ -786,7 +613,7 @@ class OpenStackMetadataTestCase(test.TestCase):
 
     def test_vendor_data_presence(self):
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         # verify that 2013-10-17 has the vendor_data.json file
         result = mdinst.lookup("/openstack/2013-10-17")
@@ -816,7 +643,7 @@ class OpenStackMetadataTestCase(test.TestCase):
             def get(self):
                 return self.data
 
-        mdinst = fake_InstanceMetadata(self, inst, vd_driver=myVdriver)
+        mdinst = fake_InstanceMetadata(inst, vd_driver=myVdriver)
 
         # verify that 2013-10-17 has the vendor_data.json file
         vdpath = "/openstack/2013-10-17/vendor_data.json"
@@ -848,7 +675,7 @@ class OpenStackMetadataTestCase(test.TestCase):
                        )
 
             inst = self.instance.obj_clone()
-            mdinst = fake_InstanceMetadata(self, inst)
+            mdinst = fake_InstanceMetadata(inst)
 
             # verify that 2013-10-17 has the vendor_data.json file
             vdpath = "/openstack/2013-10-17/vendor_data.json"
@@ -911,7 +738,7 @@ class OpenStackMetadataTestCase(test.TestCase):
                        )
 
             inst = self.instance.obj_clone()
-            mdinst = fake_InstanceMetadata(self, inst)
+            mdinst = fake_InstanceMetadata(inst)
 
             # verify the new format as well
             vdpath = "/openstack/2016-10-06/vendor_data2.json"
@@ -955,7 +782,7 @@ class OpenStackMetadataTestCase(test.TestCase):
 
     def test_network_data_presence(self):
         inst = self.instance.obj_clone()
-        mdinst = fake_InstanceMetadata(self, inst)
+        mdinst = fake_InstanceMetadata(inst)
 
         # verify that 2015-10-15 has the network_data.json file
         result = mdinst.lookup("/openstack/2015-10-15")
@@ -979,8 +806,7 @@ class OpenStackMetadataTestCase(test.TestCase):
                           "routes": [], "type": "ipv4"}],
             "services": [{'address': '1.2.3.4', 'type': 'dns'}]}
 
-        mdinst = fake_InstanceMetadata(self, inst,
-                                       network_metadata=nw_data)
+        mdinst = fake_InstanceMetadata(inst, network_metadata=nw_data)
 
         # verify that 2015-10-15 has the network_data.json file
         nwpath = "/openstack/2015-10-15/network_data.json"
@@ -1000,8 +826,7 @@ class MetadataHandlerTestCase(test.TestCase):
         fake_network.stub_out_nw_api_get_instance_nw_info(self)
         self.context = context.RequestContext('fake', 'fake')
         self.instance = fake_inst_obj(self.context)
-        self.mdinst = fake_InstanceMetadata(self, self.instance,
-            address=None, sgroups=None)
+        self.mdinst = fake_InstanceMetadata(self.instance, address=None)
 
     def test_callable(self):
 
@@ -1018,29 +843,29 @@ class MetadataHandlerTestCase(test.TestCase):
         self.assertEqual(response.body, "foo")
 
     def test_root(self):
-        expected = "\n".join(base.VERSIONS) + "\nlatest"
-        response = fake_request(self, self.mdinst, "/")
+        expected = "\n".join(base.OPENSTACK_VERSIONS) + "\nlatest"
+        response = fake_request(self, self.mdinst, "/openstack")
         self.assertEqual(response.body, expected)
 
-        response = fake_request(self, self.mdinst, "/foo/../")
+        response = fake_request(self, self.mdinst, "/openstack/foo/../")
         self.assertEqual(response.body, expected)
 
     def test_root_metadata_proxy_enabled(self):
         self.flags(service_metadata_proxy=True,
                    group='neutron')
 
-        expected = "\n".join(base.VERSIONS) + "\nlatest"
-        response = fake_request(self, self.mdinst, "/")
+        expected = "\n".join(base.OPENSTACK_VERSIONS) + "\nlatest"
+        response = fake_request(self, self.mdinst, "/openstack")
         self.assertEqual(response.body, expected)
 
-        response = fake_request(self, self.mdinst, "/foo/../")
+        response = fake_request(self, self.mdinst, "/openstack/foo/../")
         self.assertEqual(response.body, expected)
 
     def test_version_root(self):
-        response = fake_request(self, self.mdinst, "/2009-04-04")
+        response = fake_request(self, self.mdinst, "/openstack/2012-08-10")
         response_ctype = response.headers['Content-Type']
         self.assertTrue(response_ctype.startswith("text/plain"))
-        self.assertEqual(response.body, 'meta-data/\nuser-data')
+        self.assertEqual(response.body, 'meta_data.json\nuser_data')
 
         response = fake_request(self, self.mdinst, "/9999-99-99")
         self.assertEqual(response.status_int, 404)
@@ -1086,7 +911,7 @@ class MetadataHandlerTestCase(test.TestCase):
 
         self.flags(use_forwarded_for=True)
         response = fake_request(self, self.mdinst,
-                                relpath="/2009-04-04/user-data",
+                                relpath="/openstack/2015-10-15/user_data",
                                 address="168.168.168.1",
                                 fake_get_metadata=fake_get_metadata,
                                 headers={'X-Forwarded-For': expected_addr})
@@ -1141,7 +966,7 @@ class MetadataHandlerTestCase(test.TestCase):
         # try a request with service disabled
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             headers={'X-Instance-ID': 'a-b-c-d',
                      'X-Tenant-ID': 'test',
@@ -1153,7 +978,7 @@ class MetadataHandlerTestCase(test.TestCase):
                    group='neutron')
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             fake_get_metadata_by_instance_id=self._fake_x_get_metadata,
             headers={'X-Forwarded-For': '192.192.192.2',
@@ -1234,28 +1059,6 @@ class MetadataHandlerTestCase(test.TestCase):
                      'X-Instance-ID-Signature': signed})
         self.assertEqual(response.status_int, 500)
 
-    def test_get_metadata(self):
-        def _test_metadata_path(relpath):
-            # recursively confirm a http 200 from all meta-data elements
-            # available at relpath.
-            response = fake_request(self, self.mdinst,
-                                    relpath=relpath)
-            for item in response.body.split('\n'):
-                if 'public-keys' in relpath:
-                    # meta-data/public-keys/0=keyname refers to
-                    # meta-data/public-keys/0
-                    item = item.split('=')[0]
-                if item.endswith('/'):
-                    path = relpath + '/' + item
-                    _test_metadata_path(path)
-                    continue
-
-                path = relpath + '/' + item
-                response = fake_request(self, self.mdinst, relpath=path)
-                self.assertEqual(response.status_int, 200, message=path)
-
-        _test_metadata_path('/2009-04-04/meta-data')
-
     def _metadata_handler_with_instance_id(self, hnd):
         expected_instance_id = 'a-b-c-d'
 
@@ -1267,7 +1070,7 @@ class MetadataHandlerTestCase(test.TestCase):
         self.flags(service_metadata_proxy=True, group='neutron')
         response = fake_request(
             None, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             fake_get_metadata=False,
             app=hnd,
@@ -1305,7 +1108,7 @@ class MetadataHandlerTestCase(test.TestCase):
             None, self.mdinst,
             fake_get_metadata=False,
             app=hnd,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2")
         self.assertEqual(200, response.status_int)
         self.assertEqual(base64.b64decode(self.instance.user_data),
@@ -1349,7 +1152,7 @@ class MetadataHandlerTestCase(test.TestCase):
 
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             fake_get_metadata_by_instance_id=self._fake_x_get_metadata,
             headers={'X-Forwarded-For': '192.192.192.2',
@@ -1384,7 +1187,7 @@ class MetadataHandlerTestCase(test.TestCase):
 
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="10.10.10.10",
             fake_get_metadata_by_instance_id=self._fake_x_get_metadata,
             headers={'X-Forwarded-For': '192.192.192.2, 10.10.10.10',
@@ -1418,7 +1221,7 @@ class MetadataHandlerTestCase(test.TestCase):
 
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             fake_get_metadata_by_instance_id=self._fake_x_get_metadata,
             headers={'X-Forwarded-For': '192.192.192.2',
@@ -1454,7 +1257,7 @@ class MetadataHandlerTestCase(test.TestCase):
 
         response = fake_request(
             self, self.mdinst,
-            relpath="/2009-04-04/user-data",
+            relpath="/openstack/2015-10-15/user_data",
             address="192.192.192.2",
             fake_get_metadata_by_instance_id=self._fake_x_get_metadata,
             headers={'X-Forwarded-For': '192.192.192.2',
@@ -1491,9 +1294,8 @@ class MetadataHandlerTestCase(test.TestCase):
         self.assertFalse(mock_context.called, "get_admin_context() should not"
                          "have been called, the context was given")
         mock_uuid.assert_called_once_with('CONTEXT', 'foo',
-            expected_attrs=['ec2_ids', 'flavor', 'info_cache', 'metadata',
-                            'system_metadata', 'security_groups', 'keypairs',
-                            'device_metadata'])
+            expected_attrs=['info_cache', 'metadata', 'system_metadata',
+                            'keypairs', 'device_metadata'])
         imd.assert_called_once_with(inst, 'bar')
 
     @mock.patch.object(context, 'get_admin_context')
@@ -1509,9 +1311,8 @@ class MetadataHandlerTestCase(test.TestCase):
 
         mock_context.assert_called_once_with()
         mock_uuid.assert_called_once_with('CONTEXT', 'foo',
-            expected_attrs=['ec2_ids', 'flavor', 'info_cache', 'metadata',
-                            'system_metadata', 'security_groups', 'keypairs',
-                            'device_metadata'])
+            expected_attrs=['info_cache', 'metadata', 'system_metadata',
+                            'keypairs', 'device_metadata'])
         imd.assert_called_once_with(inst, 'bar')
 
 
@@ -1521,8 +1322,7 @@ class MetadataPasswordTestCase(test.TestCase):
         fake_network.stub_out_nw_api_get_instance_nw_info(self)
         self.context = context.RequestContext('fake', 'fake')
         self.instance = fake_inst_obj(self.context)
-        self.mdinst = fake_InstanceMetadata(self, self.instance,
-            address=None, sgroups=None)
+        self.mdinst = fake_InstanceMetadata(self.instance, address=None)
 
     def test_get_password(self):
         request = webob.Request.blank('')

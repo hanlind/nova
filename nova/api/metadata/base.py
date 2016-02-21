@@ -26,20 +26,17 @@ from oslo_utils import importutils
 from oslo_utils import timeutils
 import six
 
-from nova.api.ec2 import ec2utils
 from nova.api.metadata import password
 from nova.api.metadata import vendordata
 from nova.api.metadata import vendordata_dynamic
 from nova.api.metadata import vendordata_json
 from nova import availability_zones as az
-from nova import block_device
 from nova.cells import opts as cells_opts
 from nova.cells import rpcapi as cells_rpcapi
 import nova.conf
 from nova import context
 from nova.i18n import _LI, _LW
 from nova import network
-from nova.network.security_group import openstack_driver
 from nova import objects
 from nova.objects import virt_device_metadata as metadata_obj
 from nova import utils
@@ -47,18 +44,6 @@ from nova.virt import netutils
 
 
 CONF = nova.conf.CONF
-
-VERSIONS = [
-    '1.0',
-    '2007-01-19',
-    '2007-03-01',
-    '2007-08-29',
-    '2007-10-10',
-    '2007-12-15',
-    '2008-02-01',
-    '2008-09-01',
-    '2009-04-04',
-]
 
 # NOTE(mikal): think of these strings as version numbers. They traditionally
 # correlate with OpenStack release dates, with all the changes for a given
@@ -131,18 +116,10 @@ class InstanceMetadata(object):
         self.availability_zone = az.get_instance_availability_zone(ctxt,
                                                                    instance)
 
-        secgroup_api = openstack_driver.get_openstack_security_group_driver()
-        self.security_groups = secgroup_api.get_instance_security_groups(
-            ctxt, instance)
-
-        self.mappings = _format_instance_mapping(ctxt, instance)
-
         if instance.user_data is not None:
             self.userdata_raw = base64.b64decode(instance.user_data)
         else:
             self.userdata_raw = None
-
-        self.address = address
 
         # expose instance metadata.
         self.launch_metadata = utils.instance_meta(instance)
@@ -163,9 +140,6 @@ class InstanceMetadata(object):
             self.network_metadata = netutils.get_network_metadata(network_info)
         else:
             self.network_metadata = network_metadata
-
-        self.ip_info = \
-                ec2utils.get_ip_info_for_instance_from_nw_info(network_info)
 
         self.network_config = None
         cfg = netutils.get_injected_network_template(network_info)
@@ -230,89 +204,6 @@ class InstanceMetadata(object):
 
     def get_mimetype(self):
         return self.md_mimetype
-
-    def get_ec2_metadata(self, version):
-        if version == "latest":
-            version = VERSIONS[-1]
-
-        if version not in VERSIONS:
-            raise InvalidMetadataVersion(version)
-
-        hostname = self._get_hostname()
-
-        floating_ips = self.ip_info['floating_ips']
-        floating_ip = floating_ips and floating_ips[0] or ''
-
-        fixed_ips = self.ip_info['fixed_ips']
-        fixed_ip = fixed_ips and fixed_ips[0] or ''
-
-        fmt_sgroups = [x['name'] for x in self.security_groups]
-
-        meta_data = {
-            'ami-id': self.instance.ec2_ids.ami_id,
-            'ami-launch-index': self.instance.launch_index,
-            'ami-manifest-path': 'FIXME',
-            'instance-id': self.instance.ec2_ids.instance_id,
-            'hostname': hostname,
-            'local-ipv4': fixed_ip or self.address,
-            'reservation-id': self.instance.reservation_id,
-            'security-groups': fmt_sgroups}
-
-        # public keys are strangely rendered in ec2 metadata service
-        #  meta-data/public-keys/ returns '0=keyname' (with no trailing /)
-        # and only if there is a public key given.
-        # '0=keyname' means there is a normally rendered dict at
-        #  meta-data/public-keys/0
-        #
-        # meta-data/public-keys/ : '0=%s' % keyname
-        # meta-data/public-keys/0/ : 'openssh-key'
-        # meta-data/public-keys/0/openssh-key : '%s' % publickey
-        if self.instance.key_name:
-            meta_data['public-keys'] = {
-                '0': {'_name': "0=" + self.instance.key_name,
-                      'openssh-key': self.instance.key_data}}
-
-        if self._check_version('2007-01-19', version):
-            meta_data['local-hostname'] = hostname
-            meta_data['public-hostname'] = hostname
-            meta_data['public-ipv4'] = floating_ip
-
-        if False and self._check_version('2007-03-01', version):
-            # TODO(vish): store product codes
-            meta_data['product-codes'] = []
-
-        if self._check_version('2007-08-29', version):
-            instance_type = self.instance.get_flavor()
-            meta_data['instance-type'] = instance_type['name']
-
-        if False and self._check_version('2007-10-10', version):
-            # TODO(vish): store ancestor ids
-            meta_data['ancestor-ami-ids'] = []
-
-        if self._check_version('2007-12-15', version):
-            meta_data['block-device-mapping'] = self.mappings
-            if self.instance.ec2_ids.kernel_id:
-                meta_data['kernel-id'] = self.instance.ec2_ids.kernel_id
-            if self.instance.ec2_ids.ramdisk_id:
-                meta_data['ramdisk-id'] = self.instance.ec2_ids.ramdisk_id
-
-        if self._check_version('2008-02-01', version):
-            meta_data['placement'] = {'availability-zone':
-                                      self.availability_zone}
-
-        if self._check_version('2008-09-01', version):
-            meta_data['instance-action'] = 'none'
-
-        data = {'meta-data': meta_data}
-        if self.userdata_raw is not None:
-            data['user-data'] = self.userdata_raw
-
-        return data
-
-    def get_ec2_item(self, path_tokens):
-        # get_ec2_metadata returns dict without top level version
-        data = self.get_ec2_metadata(path_tokens[0])
-        return find_path_in_tree(data, path_tokens[1:])
 
     def get_openstack_item(self, path_tokens):
         if path_tokens[0] == CONTENT_DIR:
@@ -515,7 +406,7 @@ class InstanceMetadata(object):
 
         raise KeyError(path)
 
-    def _check_version(self, required, requested, versions=VERSIONS):
+    def _check_version(self, required, requested, versions):
         return versions.index(requested) >= versions.index(required)
 
     def _check_os_version(self, required, requested):
@@ -535,38 +426,32 @@ class InstanceMetadata(object):
         # Set default mimeType. It will be modified only if there is a change
         self.set_mimetype(MIME_TYPE_TEXT_PLAIN)
 
-        # fix up requests, prepending /ec2 to anything that does not match
+        # fix up requests, prepending /openstack to anything that doesn't match
         path_tokens = path.split('/')[1:]
-        if path_tokens[0] not in ("ec2", "openstack"):
+        if path_tokens[0] != "openstack":
             if path_tokens[0] == "":
                 # request for /
-                path_tokens = ["ec2"]
+                path_tokens = ["openstack"]
             else:
-                path_tokens = ["ec2"] + path_tokens
+                path_tokens = ["openstack"] + path_tokens
             path = "/" + "/".join(path_tokens)
 
         # all values of 'path' input starts with '/' and have no trailing /
 
         # specifically handle the top level request
         if len(path_tokens) == 1:
-            if path_tokens[0] == "openstack":
-                # NOTE(vish): don't show versions that are in the future
-                today = timeutils.utcnow().strftime("%Y-%m-%d")
-                versions = [v for v in OPENSTACK_VERSIONS if v <= today]
-                if OPENSTACK_VERSIONS != versions:
-                    LOG.debug("future versions %s hidden in version list",
-                              [v for v in OPENSTACK_VERSIONS
-                               if v not in versions], instance=self.instance)
-                versions += ["latest"]
-            else:
-                versions = VERSIONS + ["latest"]
+            # NOTE(vish): don't show versions that are in the future
+            today = timeutils.utcnow().strftime("%Y-%m-%d")
+            versions = [v for v in OPENSTACK_VERSIONS if v <= today]
+            if OPENSTACK_VERSIONS != versions:
+                LOG.debug("future versions %s hidden in version list",
+                          [v for v in OPENSTACK_VERSIONS
+                           if v not in versions], instance=self.instance)
+            versions += ["latest"]
             return versions
 
         try:
-            if path_tokens[0] == "openstack":
-                data = self.get_openstack_item(path_tokens[1:])
-            else:
-                data = self.get_ec2_item(path_tokens[1:])
+            data = self.get_openstack_item(path_tokens[1:])
         except (InvalidMetadataVersion, KeyError):
             raise InvalidMetadataPath(path)
 
@@ -574,25 +459,6 @@ class InstanceMetadata(object):
 
     def metadata_for_config_drive(self):
         """Yields (path, value) tuples for metadata elements."""
-        # EC2 style metadata
-        for version in VERSIONS + ["latest"]:
-            if version in CONF.config_drive_skip_versions.split(' '):
-                continue
-
-            data = self.get_ec2_metadata(version)
-            if 'user-data' in data:
-                filepath = os.path.join('ec2', version, 'user-data')
-                yield (filepath, data['user-data'])
-                del data['user-data']
-
-            try:
-                del data['public-keys']['0']['_name']
-            except KeyError:
-                pass
-
-            filepath = os.path.join('ec2', version, 'meta-data.json')
-            yield (filepath, jsonutils.dump_as_bytes(data['meta-data']))
-
         ALL_OPENSTACK_VERSIONS = OPENSTACK_VERSIONS + ["latest"]
         for version in ALL_OPENSTACK_VERSIONS:
             path = 'openstack/%s/%s' % (version, MD_JSON_NAME)
@@ -663,17 +529,10 @@ def get_metadata_by_address(address):
 def get_metadata_by_instance_id(instance_id, address, ctxt=None):
     ctxt = ctxt or context.get_admin_context()
     instance = objects.Instance.get_by_uuid(
-        ctxt, instance_id, expected_attrs=['ec2_ids', 'flavor', 'info_cache',
-                                           'metadata', 'system_metadata',
-                                           'security_groups', 'keypairs',
+        ctxt, instance_id, expected_attrs=['info_cache', 'metadata',
+                                           'system_metadata', 'keypairs',
                                            'device_metadata'])
     return InstanceMetadata(instance, address)
-
-
-def _format_instance_mapping(ctxt, instance):
-    bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
-            ctxt, instance.uuid)
-    return block_device.instance_block_mapping(instance, bdms)
 
 
 def ec2_md_print(data):
@@ -696,21 +555,6 @@ def ec2_md_print(data):
         return '\n'.join(data)
     else:
         return str(data)
-
-
-def find_path_in_tree(data, path_tokens):
-    # given a dict/list tree, and a path in that tree, return data found there.
-    for i in range(0, len(path_tokens)):
-        if isinstance(data, dict) or isinstance(data, list):
-            if path_tokens[i] in data:
-                data = data[path_tokens[i]]
-            else:
-                raise KeyError("/".join(path_tokens[0:i]))
-        else:
-            if i != len(path_tokens) - 1:
-                raise KeyError("/".join(path_tokens[0:i]))
-            data = data[path_tokens[i]]
-    return data
 
 
 # NOTE(mikal): this alias is to stop old style vendordata plugins from breaking

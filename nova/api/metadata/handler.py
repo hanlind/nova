@@ -91,8 +91,8 @@ class MetadataRequestHandler(wsgi.Application):
 
     @webob.dec.wsgify(RequestClass=wsgi.Request)
     def __call__(self, req):
-        if os.path.normpath(req.path_info) == "/":
-            resp = base.ec2_md_print(base.VERSIONS + ["latest"])
+        if os.path.normpath(req.path_info) in ("/", "/openstack"):
+            resp = base.ec2_md_print(base.OPENSTACK_VERSIONS + ["latest"])
             req.response.body = resp
             req.response.content_type = base.MIME_TYPE_TEXT_PLAIN
             return req.response
