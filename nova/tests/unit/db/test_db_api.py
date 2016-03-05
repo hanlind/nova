@@ -2880,6 +2880,30 @@ class InstanceTestCase(test.TestCase, ModelsObjectComparatorMixin):
                     db.instance_update, self.ctxt, instance['uuid'],
                     {'host': 'h1', 'expected_vm_state': ('spam', 'bar')})
 
+    def test_instance_update_cannot_overwrite_deleting_task_state(self):
+        instance = self.create_instance_with_args(
+            task_state=task_states.DELETING)
+        self.assertRaises(exception.UnexpectedDeletingTaskStateError,
+                    db.instance_update, self.ctxt, instance['uuid'],
+                    {'task_state': 'foo'})
+
+    def test_instance_update_can_set_deleting_task_state(self):
+        instance = self.create_instance_with_args(
+            task_state=task_states.DELETING)
+        db.instance_update(self.ctxt, instance['uuid'],
+                           {'task_state': task_states.DELETING})
+
+    def test_instance_update_can_overwrite_deleting_task_state_on_delete(self):
+        instance = self.create_instance_with_args(
+            task_state=task_states.DELETING)
+        db.instance_update(self.ctxt, instance['uuid'],
+                           {'task_state': None, 'vm_state': vm_states.DELETED})
+
+    def test_instance_update_can_overwrite_none_task_state(self):
+        instance = self.create_instance_with_args(task_state=None)
+        db.instance_update(self.ctxt, instance['uuid'],
+                           {'task_state': 'foo'})
+
     def test_instance_update_with_instance_uuid(self):
         # test instance_update() works when an instance UUID is passed.
         ctxt = context.get_admin_context()

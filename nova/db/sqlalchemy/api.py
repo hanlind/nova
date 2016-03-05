@@ -2770,10 +2770,21 @@ def _instance_update(context, instance_uuid, values, expected, original=None):
         _validate_unique_server_name(context, values['hostname'])
 
     compare = models.Instance(uuid=instance_uuid, **expected)
+    query = model_query(context, models.Instance, project_only=True)
+
+    # Make sure we do not accidentally overwrite a deleting task state.
+    # Setting vm_state to DELETED or ERROR however is always allowed.
+    if values.get('vm_state') not in (vm_states.DELETED, vm_states.ERROR):
+        overwrite_condition = ('task_state' in values and
+                               'task_state' not in expected and
+                               values['task_state'] != task_states.DELETING)
+        if overwrite_condition:
+            query = query.filter(or_(
+                models.Instance.task_state != task_states.DELETING,
+                models.Instance.task_state == null()))
+
     try:
-        instance_ref = model_query(context, models.Instance,
-                                   project_only=True).\
-                       update_on_match(compare, 'uuid', values)
+        instance_ref = query.update_on_match(compare, 'uuid', values)
     except update_match.NoRowsMatched:
         # Update failed. Try to find why and raise a specific error.
 
@@ -2803,6 +2814,9 @@ def _instance_update(context, instance_uuid, values, expected, original=None):
             if actual not in expected_values:
                 conflicts_expected[field] = expected_values
                 conflicts_actual[field] = actual
+
+        if original.task_state == task_states.DELETING:
+            conflicts_actual['task_state'] = original.task_state
 
         # Exception properties
         exc_props = {

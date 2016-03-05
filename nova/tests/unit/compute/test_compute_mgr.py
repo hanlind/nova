@@ -3285,6 +3285,20 @@ class ComputeManagerUnitTestCase(test.NoDBTestCase):
         mock_delete_instance.assert_called_once_with(
             self.context, instance, bdms, mock.ANY)
 
+    def test_terminate_instance_sets_error_state_on_failure(self):
+        instance = fake_instance.fake_instance_obj(self.context)
+        with test.nested(
+            mock.patch.object(self.compute, '_delete_instance'),
+            mock.patch.object(self.compute, '_set_instance_obj_error_state'),
+            mock.patch.object(compute_utils, 'add_instance_fault_from_exc')
+        ) as (mock_delete_instance, mock_set_error_state, mock_add_fault):
+            mock_delete_instance.side_effect = test.TestingException
+            self.assertRaises(test.TestingException,
+                              self.compute.terminate_instance,
+                              self.context, instance, [], [])
+            mock_set_error_state.assert_called_once_with(
+                self.context, instance, clean_task_state=True)
+
     @mock.patch.object(nova.compute.manager.ComputeManager,
                        '_notify_about_instance_usage')
     def test_trigger_crash_dump(self, notify_mock):

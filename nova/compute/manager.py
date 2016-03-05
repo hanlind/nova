@@ -2394,7 +2394,6 @@ class ComputeManager(manager.Manager):
                                 system_meta)
 
     @wrap_exception()
-    @reverts_task_state
     @wrap_instance_event(prefix='compute')
     @wrap_instance_fault
     def terminate_instance(self, context, instance, bdms, reservations):
@@ -2432,7 +2431,8 @@ class ComputeManager(manager.Manager):
                 with excutils.save_and_reraise_exception():
                     LOG.exception(_LE('Setting instance vm_state to ERROR'),
                                   instance=instance)
-                    self._set_instance_obj_error_state(context, instance)
+                    self._set_instance_obj_error_state(context, instance,
+                                                       clean_task_state=True)
 
         do_terminate_instance(instance, bdms)
 
